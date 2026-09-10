@@ -1,25 +1,94 @@
+```
+# Stock Signals
 
-# Stock Signal Engine
+A hybrid stock‑prediction engine and dashboard UI.  
+Backend powered by Deno; frontend served as a lightweight static site.
 
-Hybrid stock prediction API: multi-head ensemble (trained or heuristic),
+## 🚀 Features
+- Multi‑head ensemble predictions (trained + heuristic)
+- GARCH + regime‑aware Heston Monte Carlo
+- Fractal blend + adaptive Ψ
+- CTMU consistency gate
+- Screener for scanning stock universes
+- Outcome resolution + weight optimization
+- Finnhub primary data source with Yahoo fallback
 
-GARCH + regime-aware Heston MC, fractal blend, adaptive Ψ, CTMU
-consistency gate,
+## 📦 Project Structure
+```
+src/
+  adaptivePsi.ts
+  config.ts
+  ctmu.ts
+  finnhub.ts
+  fractal.ts
+  main.ts
+  mlFeatures.ts
+  models.ts
+  optimizer.ts
+  pipeline.ts
+  routes.ts
+  scanner.ts
+  stats.ts
+  store.ts
+  trainedModels.ts
+  types.ts
+  yahoo.ts
 
-screener, outcome resolution, and weight optimization.
+web/
+  index.html
+  dashboard.js
+  styles.css
+```
 
-**Data sources:** Finnhub (primary for OHLC + company news) with
-Yahoo Finance fallback for longer history and reliability.
+## 🔧 Environment Setup
 
-## Quick start (Deno)
+Create a `.env` file:
 
-```bash
+```
+FINNHUB_API_KEY=your_key_here
+```
 
+## ▶️ Running Locally
+
+### Backend (Deno)
+```
 cp .env.example .env
-
-# Edit .env if needed (FINNHUB_API_KEY is already set as example)
-
 deno task start
+```
 
-API: [http://localhost:8000](http://localhost:8000/)
+API will run at:
+```
+http://localhost:8000
+```
 
+### Frontend
+```
+cd web
+python3 -m http.server 5500
+```
+
+Open:
+```
+http://localhost:5500
+```
+
+## 🌐 Deployment
+
+### Backend
+Deploy to **Railway** or **Deno Deploy**:
+- Add `FINNHUB_API_KEY` as an environment variable
+- Point entry to `src/main.ts`
+
+### Frontend
+Deploy to:
+- Netlify  
+- Vercel  
+- GitHub Pages  
+
+Set dashboard API endpoint to your deployed backend URL.
+
+## 📄 License
+MIT
+```
+
+---
