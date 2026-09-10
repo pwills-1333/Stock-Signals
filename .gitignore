@@ -1,0 +1,9 @@
+
+.env
+
+data/
+
+artifacts/*.json
+
+!artifacts/.gitkeep
+
