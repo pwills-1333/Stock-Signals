@@ -4,7 +4,7 @@ import { optimizeModels } from "./optimizer.ts";
 import { listPredictions, updatePrediction, saveAccuracy } from
 
 "./store.ts";
-import { fetchYahooOHLC } from "./data/yahoo.ts";
+import { fetchYahooOHLC } from "./yahoo.ts";
 
 async function json(req: Request) {
 try {
