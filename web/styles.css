@@ -27,7 +27,9 @@ input, button {
   padding: 8px;
 }
 
-#search-hits {
+.flow { color: #bbb; padding-left: 1.2rem; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+#hits {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;

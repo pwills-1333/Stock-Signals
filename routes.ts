@@ -1,12 +1,13 @@
 import { runAdvancedPipeline } from "./pipeline.ts";
 import { runScreener } from "./scanner.ts";
 import { optimizeModels } from "./optimizer.ts";
-import { listPredictions, updatePrediction, saveAccuracy } from
+import { listPredictions, updatePrediction, saveAccuracy, listAccuracy } from
 
 "./store.ts";
 import { fetchYahooOHLC } from "./yahoo.ts";
 import { searchSymbols } from "./finnhub.ts";
-import { FINNHUB_API_KEY } from "./config.ts";
+import { FINNHUB_API_KEY, MIN_RECORDS_FOR_WEIGHTS } from "./config.ts";
+import { loadModelArtifacts } from "./trainedModels.ts";
 import { serveWeb } from "./static.ts";
 
 async function json(req: Request) {
@@ -38,10 +39,22 @@ headers: {
 
 try {
 if (path === "/health" && req.method === "GET") {
+const preds = await listPredictions();
+const acc = await listAccuracy();
+const now = Date.now();
+const art = await loadModelArtifacts();
 return Response.json({
 ok: true,
 ts: new Date().toISOString(),
 finnhub: Boolean(FINNHUB_API_KEY),
+artifacts: Boolean(art),
+predictions: preds.length,
+unresolved: preds.filter((p) => !p.resolved).length,
+due: preds.filter((p) =>
+!p.resolved && new Date(p.horizonEndDate).getTime() <= now
+).length,
+accuracy: acc.length,
+weightsReady: acc.length >= MIN_RECORDS_FOR_WEIGHTS,
 }, { headers });
 }
 
