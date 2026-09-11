@@ -5,6 +5,7 @@ import { listPredictions, updatePrediction, saveAccuracy } from
 
 "./store.ts";
 import { fetchYahooOHLC } from "./yahoo.ts";
+import { serveWeb } from "./static.ts";
 
 async function json(req: Request) {
 try {
@@ -150,6 +151,11 @@ return Response.json({ resolved: items.length, items }, { headers });
 
 if (path === "/optimize/weights" && req.method === "POST") {
 return Response.json(await optimizeModels(), { headers });
+}
+
+if (req.method === "GET") {
+const page = await serveWeb(path);
+if (page) return page;
 }
 
 return Response.json({ error: "not found" }, { status: 404, headers
