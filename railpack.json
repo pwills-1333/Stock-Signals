@@ -1,0 +1,4 @@
+{
+  "provider": "deno",
+  "start": "deno task start"
+}
