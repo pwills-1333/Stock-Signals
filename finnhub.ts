@@ -1,10 +1,10 @@
-import { FINNHUB_API_KEY } from "../config.ts";
+import { FINNHUB_API_KEY } from "./config.ts";
 import {
 
 rsi, macd, sma, atr, bollingerWidth, logReturns, std, percentile, gauss,
 clamp,
-} from "../stats.ts";
-import type { OHLC } from "../types.ts";
+} from "./stats.ts";
+import type { OHLC } from "./types.ts";
 
 async function finnhubGet(path: string, params: Record<string, string
 | number> = {}) {

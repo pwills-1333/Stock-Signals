@@ -1,4 +1,6 @@
 {
-  "provider": "deno",
-  "start": "deno task start"
+  "$schema": "https://schema.railpack.com",
+  "deploy": {
+    "startCommand": "deno run --allow-all main.ts"
+  }
 }

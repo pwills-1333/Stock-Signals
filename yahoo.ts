@@ -1,5 +1,5 @@
-import { clamp } from "../stats.ts";
-import type { OHLC } from "../types.ts";
+import { clamp } from "./stats.ts";
+import type { OHLC } from "./types.ts";
 
 const POS = [
 "beat", "beats", "surge", "rally", "upgrade", "buy",
