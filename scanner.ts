@@ -1,5 +1,5 @@
 import { clamp } from "./stats.ts";
-import { fetchUSSymbols } from "./data/finnhub.ts";
+import { fetchUSSymbols } from "./finnhub.ts";
 import { computeEngine, fetchInputData } from "./pipeline.ts";
 import { createPsiSession } from "./adaptivePsi.ts";
 import { loadModelArtifacts } from "./trainedModels.ts";
