@@ -9,9 +9,18 @@
 <body>
   <header>
     <h1>Stock Signals</h1>
-    <p>Runs <code>/predict</code> on the engine. No client-side scoring.</p>
+    <p>The page only calls the engine. It does not score on its own.</p>
     <div id="health">checking…</div>
   </header>
+
+  <form id="search-form">
+    <label>
+      Search US symbols
+      <input id="query" placeholder="AAPL or apple" />
+    </label>
+    <button type="submit">Search</button>
+  </form>
+  <div id="search-hits"></div>
 
   <form id="predict-form">
     <label>
@@ -23,6 +32,7 @@
       <input id="horizon" type="number" min="1" max="60" value="14" />
     </label>
     <button type="submit">Run algorithm</button>
+    <button type="button" id="scan-us">Scan US market</button>
   </form>
 
   <p id="status"></p>

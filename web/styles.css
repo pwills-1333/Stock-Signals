@@ -27,6 +27,13 @@ input, button {
   padding: 8px;
 }
 
+#search-hits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
 pre {
   white-space: pre-wrap;
   background: #000;

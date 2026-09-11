@@ -5,6 +5,8 @@ import { listPredictions, updatePrediction, saveAccuracy } from
 
 "./store.ts";
 import { fetchYahooOHLC } from "./yahoo.ts";
+import { searchSymbols } from "./finnhub.ts";
+import { FINNHUB_API_KEY } from "./config.ts";
 import { serveWeb } from "./static.ts";
 
 async function json(req: Request) {
@@ -36,8 +38,21 @@ headers: {
 
 try {
 if (path === "/health" && req.method === "GET") {
-return Response.json({ ok: true, ts: new Date().toISOString() }, {
-headers });
+return Response.json({
+ok: true,
+ts: new Date().toISOString(),
+finnhub: Boolean(FINNHUB_API_KEY),
+}, { headers });
+}
+
+if (path === "/search" && req.method === "GET") {
+const q = url.searchParams.get("q") || "";
+const results = await searchSymbols(q);
+return Response.json({
+query: q,
+finnhub: Boolean(FINNHUB_API_KEY),
+results,
+}, { headers });
 }
 
 if (path === "/predict" && req.method === "POST") {

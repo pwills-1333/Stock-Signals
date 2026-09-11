@@ -98,6 +98,20 @@ return (j || [])
 .filter((s): s is string => !!s && !s.includes("."));
 }
 
+export async function searchSymbols(query: string) {
+const q = query.trim();
+if (!q || !FINNHUB_API_KEY) return [];
+const j = await finnhubGet("/search", { q });
+if (!j || !Array.isArray(j.result)) return [];
+return j.result.slice(0, 20).map((
+r: { symbol?: string; displaySymbol?: string; description?: string; type?: string },
+) => ({
+symbol: String(r.symbol || r.displaySymbol || "").toUpperCase(),
+description: r.description || "",
+type: r.type || "",
+})).filter((r) => !!r.symbol);
+}
+
 export function computeTechnicals(ohlc: { c: number[]; h: number[];
 l: number[]; v: number[] }) {
 const closes = ohlc.c;
