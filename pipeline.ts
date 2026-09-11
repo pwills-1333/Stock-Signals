@@ -1,16 +1,16 @@
 import { DEFAULT_SETTINGS, DEFAULT_WEIGHTS } from "./config.ts";
 import { fetchYahooOHLC, fetchYahooNews, scoreSentiment, detectShock }
+from "./yahoo.ts";
 
-from "./data/yahoo.ts";
 import {
+  fetchFinnhubOHLC,
+  fetchQuote,
+  fetchCompanyNews,
+  computeTechnicals,
+  computeGARCH,
+  hestonMonteCarlo,
+} from "./finnhub.ts";
 
-fetchFinnhubOHLC,
-fetchQuote,
-fetchCompanyNews,
-computeTechnicals,
-computeGARCH,
-hestonMonteCarlo,
-} from "./data/finnhub.ts";
 import { ensembleYhat } from "./models.ts";
 import {
 
