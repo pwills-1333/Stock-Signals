@@ -153,6 +153,28 @@ button.ghost {
 
 .status { min-height: 1.2em; margin: 4px 2px 12px; }
 
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.metric {
+  background: #f7f8fa;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.metric span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.75rem;
+  margin-bottom: 4px;
+}
+
+.metric strong { font-size: 1.05rem; }
+
 .output pre {
   margin: 0;
   white-space: pre-wrap;

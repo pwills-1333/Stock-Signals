@@ -7,11 +7,52 @@ const resolveBtn = document.getElementById("resolve");
 const optimizeBtn = document.getElementById("optimize");
 const statusEl = document.getElementById("status");
 const resultEl = document.getElementById("result");
+const readoutCard = document.getElementById("readout-card");
+const readoutEl = document.getElementById("readout");
 const tickerEl = document.getElementById("ticker");
 const horizonEl = document.getElementById("horizon");
 
+function money(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return "—";
+  return x.toLocaleString(undefined, { style: "currency", currency: "USD" });
+}
+
+function pct(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return "—";
+  return `${(x * 100).toFixed(2)}%`;
+}
+
+function metric(label, value) {
+  return `<div class="metric"><span>${label}</span><strong>${value}</strong></div>`;
+}
+
+function showReadout(data) {
+  const p = data && data.prediction;
+  if (!p) {
+    readoutCard.hidden = true;
+    readoutEl.innerHTML = "";
+    return;
+  }
+  const horizon = p.horizonDays ? `${p.horizonDays} days` : "—";
+  readoutCard.hidden = false;
+  readoutEl.innerHTML = [
+    metric("Ticker", p.ticker || "—"),
+    metric("Do / don't", `${p.signal || "—"} · grade ${p.tradeGrade || "—"}`),
+    metric("Current price", money(p.entryPrice)),
+    metric("Estimated price", money(p.predictedPrice)),
+    metric("Estimated change", pct(p.expectedReturn)),
+    metric("Horizon", horizon),
+    metric("Engine confidence", pct(p.confidence)),
+    metric("Low (MC 5%)", money(p.mc && p.mc.p5)),
+    metric("High (MC 95%)", money(p.mc && p.mc.p95)),
+  ].join("");
+}
+
 function show(data) {
   resultEl.textContent = JSON.stringify(data, null, 2);
+  showReadout(data);
 }
 
 function addHit(label, ticker) {
@@ -53,6 +94,8 @@ async function refreshHealth() {
 async function postEngine(path, body, label) {
   statusEl.textContent = label;
   resultEl.textContent = "";
+  readoutCard.hidden = true;
+  readoutEl.innerHTML = "";
   const res = await fetch(path, {
     method: "POST",
     headers: { "content-type": "application/json" },
