@@ -24,22 +24,29 @@ function addHit(label, ticker) {
   hitsEl.appendChild(btn);
 }
 
+function pill(text, kind) {
+  const el = document.createElement("span");
+  el.className = `pill${kind ? ` ${kind}` : ""}`;
+  el.textContent = text;
+  return el;
+}
+
 async function refreshHealth() {
+  healthEl.textContent = "";
   try {
     const res = await fetch("/health");
     const data = await res.json();
-    const parts = [
-      data.ok ? "engine online" : "engine degraded",
-      data.finnhub ? "Finnhub on" : "Finnhub off",
-      data.artifacts ? "ridge artifacts on" : "heuristic heads",
-      `${data.predictions ?? 0} saved`,
-      `${data.due ?? 0} due`,
-      `${data.accuracy ?? 0} resolved`,
-      data.weightsReady ? "weights live" : "default weights",
-    ];
-    healthEl.textContent = parts.join(" · ");
+    healthEl.append(
+      pill(data.ok ? "Engine online" : "Engine degraded", data.ok ? "on" : "off"),
+      pill(data.finnhub ? "Finnhub on" : "Finnhub off", data.finnhub ? "on" : "off"),
+      pill(data.artifacts ? "Trained heads" : "Heuristic heads"),
+      pill(`${data.predictions ?? 0} saved`),
+      pill(`${data.due ?? 0} due`),
+      pill(`${data.accuracy ?? 0} resolved`),
+      pill(data.weightsReady ? "Weights live" : "Default weights"),
+    );
   } catch {
-    healthEl.textContent = "engine offline";
+    healthEl.append(pill("Engine offline", "off"));
   }
 }
 
