@@ -85,31 +85,48 @@ summary: n.summary || "",
 }));
 }
 
-export async function fetchUSSymbols() {
-if (!FINNHUB_API_KEY) {
-return ["AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL",
+const US_SYMBOL_FALLBACK = ["AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL",
 "AMD", "JPM", "TSLA", "AVGO"];
-}
 
+export async function fetchUSSymbols() {
+if (FINNHUB_API_KEY) {
 const j = await finnhubGet("/stock/symbol", { exchange: "US" });
-if (!Array.isArray(j)) return [];
-return (j || [])
+if (Array.isArray(j) && j.length) {
+const list = j
 .map((x: { symbol?: string }) => x.symbol)
 .filter((s): s is string => !!s && !s.includes("."));
+if (list.length) return list;
+}
+
+}
+
+return [...US_SYMBOL_FALLBACK];
 }
 
 export async function searchSymbols(query: string) {
 const q = query.trim();
-if (!q || !FINNHUB_API_KEY) return [];
+if (!q) return [];
+if (FINNHUB_API_KEY) {
 const j = await finnhubGet("/search", { q });
-if (!j || !Array.isArray(j.result)) return [];
-return j.result.slice(0, 20).map((
+if (j && Array.isArray(j.result) && j.result.length) {
+const hits = j.result.slice(0, 20).map((
 r: { symbol?: string; displaySymbol?: string; description?: string; type?: string },
 ) => ({
 symbol: String(r.symbol || r.displaySymbol || "").toUpperCase(),
 description: r.description || "",
 type: r.type || "",
 })).filter((r) => !!r.symbol);
+if (hits.length) return hits;
+}
+
+}
+
+const symbol = q.toUpperCase().replace(/[^A-Z.]/g, "");
+if (symbol) {
+return [{ symbol, description: "Direct ticker", type: "manual" }];
+}
+
+return [];
 }
 
 export function computeTechnicals(ohlc: { c: number[]; h: number[];

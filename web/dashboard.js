@@ -114,6 +114,8 @@ scanBtn.addEventListener("click", async () => {
     }
     if (data.picks?.length) {
       statusEl.textContent = "Exact /screen response below. Click a pick, then run the algorithm.";
+    } else {
+      statusEl.textContent = `Scan finished with ${data.scanned ?? 0} names and 0 picks. Try Run algorithm on a ticker.`;
     }
   } catch (err) {
     statusEl.textContent = String(err.message || err);
