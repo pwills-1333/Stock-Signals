@@ -85,19 +85,42 @@ summary: n.summary || "",
 }));
 }
 
-const US_SYMBOL_FALLBACK = ["AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL",
-"AMD", "JPM", "TSLA", "AVGO"];
+const US_SYMBOL_FALLBACK = [
+"AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "AMD", "JPM", "TSLA", "AVGO",
+"UNH", "XOM", "LLY", "JNJ", "V", "MA", "WMT", "PG", "HD", "ORCL",
+"COST", "ABBV", "KO", "MRK", "PEP", "BAC", "CVX", "ADBE", "CRM", "NFLX",
+"DIS", "TMO", "CSCO", "ABT", "ACN", "MCD", "DHR", "WFC", "LIN", "TXN",
+"PM", "NEE", "INTU", "AMGN", "IBM", "CAT", "GE", "RTX", "QCOM", "ISRG",
+"HON", "SPGI", "AMAT", "PFE", "BKNG", "LOW", "SYK", "GS", "UNP", "BLK",
+"ADP", "PLD", "MDT", "C", "AXP", "DE", "CB", "ETN", "SCHW", "SBUX",
+"GILD", "TJX", "SO", "ZTS", "LMT", "MO", "BMY", "CI", "CME", "TMUS",
+"DUK", "EQIX", "ICE", "SHW", "PYPL", "USB", "PNC", "MMM", "GM", "F",
+"CVS", "CL", "ITW", "CDNS", "SNPS", "MDLZ", "REGN", "AMT", "SLB", "WM",
+"EMR", "NOC", "BDX", "AON", "PH", "WELL", "MSI", "CTAS", "APD", "FDX",
+"NSC", "CARR", "GMAB", "PANW", "CRWD", "KLAC", "LRCX", "MU", "INTC", "NOW",
+];
+
+function parseSymbolRows(j: unknown) {
+if (!Array.isArray(j)) return [];
+return j
+.map((x: { symbol?: string }) => x.symbol)
+.filter((s): s is string => !!s && !s.includes("."));
+}
 
 export async function fetchUSSymbols() {
 if (FINNHUB_API_KEY) {
-const j = await finnhubGet("/stock/symbol", { exchange: "US" });
-if (Array.isArray(j) && j.length) {
-const list = j
-.map((x: { symbol?: string }) => x.symbol)
-.filter((s): s is string => !!s && !s.includes("."));
-if (list.length) return list;
+const queries = [
+{ exchange: "US" },
+{ exchange: "US", mic: "XNGS" },
+{ exchange: "US", mic: "XNYS" },
+];
+const found = new Set<string>();
+for (const params of queries) {
+const rows = parseSymbolRows(await finnhubGet("/stock/symbol", params));
+for (const s of rows) found.add(s);
 }
 
+if (found.size) return [...found];
 }
 
 return [...US_SYMBOL_FALLBACK];
