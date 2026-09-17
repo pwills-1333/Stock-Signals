@@ -2,14 +2,12 @@ FROM denoland/deno:2.1.4
 
 WORKDIR /app
 
-# Copy everything
+# Copy everything first
 COPY . .
 
-# Cache dependencies (optional but good)
+# Cache (with fallback so the build doesn't fail)
 RUN deno cache src/main.ts || true
 
-# Railway will inject PORT automatically
 EXPOSE 8000
 
-# Correct start command
 CMD ["deno", "run", "-A", "src/main.ts"]
