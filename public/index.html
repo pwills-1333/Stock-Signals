@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Ψ Signal Engine</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            dark: {
+              900: '#0b0d12',
+              800: '#12151c',
+              700: '#1a1e27',
+              600: '#252a36',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background: #0b0d12; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .card { background: #12151c; border: 1px solid #252a36; border-radius: 16px; }
+    .positive { color: #22c55e; }
+    .negative { color: #ef4444; }
+    .badge-buy { background: rgba(34,197,94,0.15); color: #22c55e; }
+    .badge-sell { background: rgba(239,68,68,0.15); color: #ef4444; }
+    .badge-hold { background: rgba(234,179,8,0.15); color: #eab308; }
+    .badge-avoid { background: rgba(107,114,128,0.2); color: #9ca3af; }
+  </style>
+</head>
+<body class="min-h-screen pb-24">
+  <!-- Header -->
+  <header class="sticky top-0 z-50 bg-dark-900/90 backdrop-blur border-b border-dark-600 px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <span class="text-2xl font-bold text-blue-400">Ψ</span>
+      <span class="font-semibold text-lg">Signal Engine</span>
+    </div>
+    <div class="text-xs text-gray-400" id="status">● Live</div>
+  </header>
+
+  <!-- Search -->
+  <div class="px-4 mt-4">
+    <div class="relative">
+      <input id="tickerInput" type="text" placeholder="Search ticker (e.g. AAPL)" 
+             class="w-full bg-dark-800 border border-dark-600 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+             value="AAPL" />
+      <button onclick="loadTicker()" class="absolute right-2 top-2 bg-blue-600 hover:bg-blue-500 text-white text-sm px-4 py-1.5 rounded-lg">
+        Analyze
+      </button>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <main class="px-4 mt-5 space-y-4" id="mainContent">
+    <!-- Loading state -->
+    <div id="loading" class="text-center py-20 text-gray-400">Loading AAPL...</div>
+
+    <!-- Prediction Card (hidden until loaded) -->
+    <div id="predictionCard" class="hidden space-y-4">
+      <!-- Price Header -->
+      <div class="card p-5">
+        <div class="flex justify-between items-start">
+          <div>
+            <div class="flex items-center gap-2">
+              <h1 id="tickerName" class="text-2xl font-bold">AAPL</h1>
+              <span class="text-xs text-gray-400">NASDAQ</span>
+            </div>
+            <p id="companyName" class="text-sm text-gray-400 mt-0.5">Apple Inc.</p>
+          </div>
+          <div id="signalBadge" class="badge-buy px-3 py-1 rounded-full text-sm font-semibold">BUY</div>
+        </div>
+
+        <div class="mt-4">
+          <div class="text-3xl font-bold" id="currentPrice">$227.45</div>
+          <div class="text-sm mt-1">
+            <span id="priceChange" class="positive">+1.82 (+0.81%)</span>
+            <span class="text-gray-500 ml-2" id="priceDate">Market Close</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 mt-5">
+          <div class="bg-dark-700 rounded-xl p-3">
+            <div class="text-xs text-gray-400">Predicted Price</div>
+            <div class="text-lg font-semibold" id="predictedPrice">$238.37</div>
+          </div>
+          <div class="bg-dark-700 rounded-xl p-3">
+            <div class="text-xs text-gray-400">Expected Return</div>
+            <div class="text-lg font-semibold positive" id="expectedReturn">+4.8%</div>
+          </div>
+          <div class="bg-dark-700 rounded-xl p-3">
+            <div class="text-xs text-gray-400">Confidence</div>
+            <div class="text-lg font-semibold" id="confidence">78%</div>
+          </div>
+          <div class="bg-dark-700 rounded-xl p-3">
+            <div class="text-xs text-gray-400">Trade Grade</div>
+            <div class="text-lg font-semibold text-blue-400" id="tradeGrade">A</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Ψ + CTR-A -->
+      <div class="grid grid-cols-2 gap-3">
+        <div class="card p-4">
+          <div class="text-xs text-gray-400 mb-1">Adaptive Ψ</div>
+          <div class="text-2xl font-bold text-purple-400" id="psiTotal">0.62</div>
+          <div class="mt-3 space-y-1.5 text-xs">
+            <div class="flex justify-between"><span>S</span><div class="w-16 bg-dark-600 rounded-full h-1.5"><div id="barS" class="bg-blue-500 h-1.5 rounded-full" style="width:70%"></div></div></div>
+            <div class="flex justify-between"><span>E</span><div class="w-16 bg-dark-600 rounded-full h-1.5"><div id="barE" class="bg-purple-500 h-1.5 rounded-full" style="width:64%"></div></div></div>
+            <div class="flex justify-between"><span>C</span><div class="w-16 bg-dark-600 rounded-full h-1.5"><div id="barC" class="bg-pink-500 h-1.5 rounded-full" style="width:58%"></div></div></div>
+            <div class="flex justify-between"><span>M</span><div class="w-16 bg-dark-600 rounded-full h-1.5"><div id="barM" class="bg-green-500 h-1.5 rounded-full" style="width:55%"></div></div></div>
+          </div>
+        </div>
+
+        <div class="card p-4">
+          <div class="text-xs text-gray-400 mb-1">CTR-A Coherence</div>
+          <div class="text-2xl font-bold text-cyan-400" id="coherenceR">0.71</div>
+          <div class="mt-3 grid grid-cols-2 gap-2 text-center">
+            <div>
+              <div class="text-xs text-gray-400">GI</div>
+              <div class="font-semibold" id="giValue">0.68</div>
+            </div>
+            <div>
+              <div class="text-xs text-gray-400">RC</div>
+              <div class="font-semibold" id="rcValue">0.74</div>
+            </div>
+          </div>
+          <div class="text-xs text-gray-400 mt-2" id="ctrMode">Integrated</div>
+        </div>
+      </div>
+
+      <!-- Levels -->
+      <div class="card p-4">
+        <div class="text-sm font-medium mb-3">Trade Levels</div>
+        <div class="flex justify-between text-sm">
+          <span class="text-gray-400">Stop Loss</span>
+          <span class="negative" id="stopLoss">$212.00</span>
+        </div>
+        <div class="flex justify-between text-sm mt-2">
+          <span class="text-gray-400">Take Profit</span>
+          <span class="positive" id="takeProfit">$248.00</span>
+        </div>
+        <div class="flex justify-between text-sm mt-2">
+          <span class="text-gray-400">Kelly %</span>
+          <span id="kellyPct">12.4%</span>
+        </div>
+      </div>
+
+      <!-- Rationale -->
+      <div class="card p-4">
+        <div class="text-sm font-medium mb-2">Engine Rationale</div>
+        <p class="text-sm text-gray-300 leading-relaxed" id="rationale">
+          Strong momentum confirmed. High coherence and favorable risk/reward.
+        </p>
+      </div>
+    </div>
+  </main>
+
+  <!-- Bottom Navigation -->
+  <nav class="fixed bottom-0 left-0 right-0 bg-dark-900 border-t border-dark-600 px-6 py-3 flex justify-between items-center z-50">
+    <button class="flex flex-col items-center text-blue-400" onclick="showHome()">
+      <span class="text-xl">🏠</span>
+      <span class="text-[10px] mt-0.5">Home</span>
+    </button>
+    <button class="flex flex-col items-center text-gray-400" onclick="loadScreener()">
+      <span class="text-xl">📊</span>
+      <span class="text-[10px] mt-0.5">Screener</span>
+    </button>
+    <button class="flex flex-col items-center text-gray-400">
+      <span class="text-xl">💼</span>
+      <span class="text-[10px] mt-0.5">Portfolio</span>
+    </button>
+    <button class="flex flex-col items-center text-gray-400">
+      <span class="text-xl">⚙️</span>
+      <span class="text-[10px] mt-0.5">Settings</span>
+    </button>
+  </nav>
+
+  <script>
+    const API = window.location.origin; // same origin on Railway
+
+    async function loadTicker(ticker = null) {
+      const t = (ticker || document.getElementById('tickerInput').value || 'AAPL').toUpperCase().trim();
+      if (!t) return;
+
+      document.getElementById('loading').classList.remove('hidden');
+      document.getElementById('predictionCard').classList.add('hidden');
+      document.getElementById('status').textContent = 'Analyzing...';
+
+      try {
+        const res = await fetch(`${API}/predict`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ticker: t, horizonDays: 14 })
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        const p = data.prediction;
+        renderPrediction(p);
+        document.getElementById('status').textContent = '● Live';
+      } catch (err) {
+        document.getElementById('loading').textContent = 'Error: ' + err.message;
+        document.getElementById('status').textContent = 'Error';
+      }
+    }
+
+    function renderPrediction(p) {
+      document.getElementById('loading').classList.add('hidden');
+      document.getElementById('predictionCard').classList.remove('hidden');
+
+      document.getElementById('tickerName').textContent = p.ticker;
+      document.getElementById('currentPrice').textContent = '$' + p.entryPrice.toFixed(2);
+      document.getElementById('predictedPrice').textContent = '$' + p.predictedPrice.toFixed(2);
+      document.getElementById('expectedReturn').textContent = (p.expectedReturn >= 0 ? '+' : '') + (p.expectedReturn * 100).toFixed(1) + '%';
+      document.getElementById('expectedReturn').className = 'text-lg font-semibold ' + (p.expectedReturn >= 0 ? 'positive' : 'negative');
+      document.getElementById('confidence').textContent = Math.round(p.confidence * 100) + '%';
+      document.getElementById('tradeGrade').textContent = p.tradeGrade;
+
+      // Signal badge
+      const badge = document.getElementById('signalBadge');
+      badge.textContent = p.signal;
+      badge.className = 'px-3 py-1 rounded-full text-sm font-semibold ' + 
+        (p.signal === 'BUY' ? 'badge-buy' : p.signal === 'SELL' ? 'badge-sell' : p.signal === 'AVOID' ? 'badge-avoid' : 'badge-hold');
+
+      // Ψ
+      document.getElementById('psiTotal').textContent = p.psi.total.toFixed(2);
+      document.getElementById('barS').style.width = Math.abs(p.psi.s) * 100 + '%';
+      document.getElementById('barE').style.width = p.psi.e * 100 + '%';
+      document.getElementById('barC').style.width = p.psi.c * 100 + '%';
+      document.getElementById('barM').style.width = p.psi.m * 100 + '%';
+
+      // CTR-A
+      document.getElementById('coherenceR').textContent = p.ctmu.R.toFixed(2);
+      document.getElementById('giValue').textContent = p.ctmu.GI.toFixed(2);
+      document.getElementById('rcValue').textContent = p.ctmu.RC.toFixed(2);
+      document.getElementById('ctrMode').textContent = p.ctmu.mode;
+
+      // Levels
+      document.getElementById('stopLoss').textContent = '$' + p.stopLoss.toFixed(2);
+      document.getElementById('takeProfit').textContent = '$' + p.takeProfit.toFixed(2);
+      document.getElementById('kellyPct').textContent = (p.kellyPct * 100).toFixed(1) + '%';
+
+      document.getElementById('rationale').textContent = p.rationale || 'Analysis complete.';
+    }
+
+    async function loadScreener() {
+      document.getElementById('mainContent').innerHTML = `
+        <div class="text-center py-10 text-gray-400">Loading screener...</div>
+      `;
+      try {
+        const res = await fetch(`${API}/screen`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ limit: 10, horizonDays: 14 })
+        });
+        const data = await res.json();
+        let html = `<h2 class="text-lg font-semibold mb-3">Top Ranked Tickers</h2><div class="space-y-3">`;
+        for (const pick of data.picks || []) {
+          const retClass = pick.expectedReturn >= 0 ? 'positive' : 'negative';
+          html += `
+            <div class="card p-4 flex justify-between items-center" onclick="document.getElementById('tickerInput').value='${pick.ticker}'; loadTicker('${pick.ticker}')">
+              <div>
+                <div class="font-semibold">${pick.ticker}</div>
+                <div class="text-xs text-gray-400">${pick.signal} • R=${(pick.R||0).toFixed(2)}</div>
+              </div>
+              <div class="text-right">
+                <div class="${retClass} font-medium">${(pick.expectedReturn*100).toFixed(1)}%</div>
+                <div class="text-xs text-gray-400">${pick.grade || '-'}</div>
+              </div>
+            </div>`;
+        }
+        html += `</div>`;
+        document.getElementById('mainContent').innerHTML = html;
+      } catch (e) {
+        document.getElementById('mainContent').innerHTML = `<div class="text-red-400 p-4">Failed to load screener</div>`;
+      }
+    }
+
+    function showHome() {
+      document.getElementById('mainContent').innerHTML = `
+        <div id="loading" class="text-center py-20 text-gray-400">Loading...</div>
+        <div id="predictionCard" class="hidden space-y-4"></div>
+      `;
+      // Re-inject the prediction card structure would be better, but for simplicity just reload
+      location.reload();
+    }
+
+    // Auto-load AAPL on start
+    loadTicker('AAPL');
+  </script>
+</body>
+</html>
