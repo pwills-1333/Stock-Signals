@@ -2,12 +2,14 @@ FROM denoland/deno:2.1.4
 
 WORKDIR /app
 
-COPY deno.json .
-RUN deno cache src/main.ts || true
-
+# Copy everything
 COPY . .
 
-ENV PORT=8000
+# Cache dependencies (optional but good)
+RUN deno cache src/main.ts
+
+# Railway will inject PORT automatically
 EXPOSE 8000
 
-CMD ["deno", "run", "-A", "--env", "src/main.ts"]
+# Correct start command
+CMD ["deno", "run", "-A", "src/main.ts"]
