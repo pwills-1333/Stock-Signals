@@ -1,99 +1,71 @@
-import { clamp } from "../stats.ts";
-import type { OHLC } from "../types.ts";
+import { OHLC } from "../types.ts";
 
-const POS = [
-  "beat", "beats", "surge", "rally", "upgrade", "buy", "strong", "record",
-  "profit", "gain", "growth", "expand", "outperform", "bullish", "raise",
-];
-const NEG = [
-  "miss", "misses", "plunge", "drop", "crash", "downgrade", "sell", "loss",
-  "lawsuit", "probe", "fraud", "warn", "cut", "weak", "recall", "bearish",
-  "slump", "default", "bankrupt",
-];
+const BASE = "https://query1.finance.yahoo.com";
 
-const YAHOO_HEADERS = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  Accept: "application/json,text/plain,*/*",
-};
-
-async function fetchWithRetry(url: string, attempts = 2): Promise<Response> {
-  let lastErr: unknown;
-  for (let i = 0; i < attempts; i++) {
-    try {
-      const res = await fetch(url, { headers: YAHOO_HEADERS });
-      if (res.ok || res.status === 404) return res;
-      lastErr = new Error(`status ${res.status}`);
-    } catch (e) {
-      lastErr = e;
-    }
-    await new Promise((r) => setTimeout(r, 400 * (i + 1)));
-  }
-  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
-}
-
-export async function fetchYahooOHLC(ticker: string, days = 180): Promise<OHLC> {
-  const rangeDays = Math.ceil(days * 1.5);
-  const url =
-    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=${rangeDays}d&interval=1d`;
-  const res = await fetchWithRetry(url);
-  if (!res.ok) throw new Error(`Yahoo OHLC ${ticker}: ${res.status}`);
-  const j = await res.json();
-  const r = j?.chart?.result?.[0];
-  if (!r) throw new Error(`Yahoo empty ${ticker}`);
-  const q = r.indicators.quote[0];
-  const adj = r.indicators.adjclose?.[0]?.adjclose;
-  return {
-    t: r.timestamp || [],
-    o: q.open || [],
-    h: q.high || [],
-    l: q.low || [],
-    c: adj || q.close || [],
-    v: q.volume || [],
-  };
-}
-
-export async function fetchYahooNews(ticker: string, limit = 20) {
+async function fetchJSON(url: string): Promise<any> {
   try {
-    const url =
-      `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(ticker)}&newsCount=${limit}`;
-    const res = await fetchWithRetry(url);
-    if (!res.ok) return [];
-    const j = await res.json();
-    return (j.news || []).map((n: { title?: string; summary?: string }) => ({
-      title: n.title || "",
-      summary: n.summary || "",
-    }));
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return await res.json();
   } catch {
-    return [];
+    return null;
   }
 }
 
-export function scoreSentiment(news: { title?: string; summary?: string }[]) {
-  let polarity = 0, intensity = 0;
-  const items: { title?: string; score: number }[] = [];
-  for (const n of news || []) {
-    const text = ((n.title || "") + " " + (n.summary || "")).toLowerCase();
-    let p = 0;
-    for (const w of POS) if (text.includes(w)) p += 1;
-    for (const w of NEG) if (text.includes(w)) p -= 1;
-    p = clamp(p, -2, 2);
-    polarity += p;
-    intensity += Math.abs(p);
-    items.push({ title: n.title, score: p });
-  }
-  const len = news?.length || 0;
-  const norm = len ? polarity / (len * 3) : 0;
+export async function fetchYahooOHLC(ticker: string): Promise<OHLC | null> {
+  const now = Math.floor(Date.now() / 1000);
+  const start = now - 365 * 24 * 3600;
+
+  const url =
+    `${BASE}/v8/finance/chart/${ticker}` +
+    `?period1=${start}&period2=${now}&interval=1d`;
+
+  const data = await fetchJSON(url);
+  if (!data || !data.chart || !data.chart.result) return null;
+
+  const result = data.chart.result[0];
+  if (!result || !result.indicators || !result.indicators.quote) return null;
+
+  const quote = result.indicators.quote[0];
+  const timestamps = result.timestamp;
+
+  if (!Array.isArray(timestamps) || timestamps.length === 0) return null;
+
+  const o = quote.open ?? [];
+  const h = quote.high ?? [];
+  const l = quote.low ?? [];
+  const c = quote.close ?? [];
+  const v = quote.volume ?? [];
+
+  const clean = (arr: number[]) =>
+    arr.map((x) => (Number.isFinite(x) ? x : 0));
+
   return {
-    S: clamp(norm, -1, 1),
-    E: clamp(intensity / (len * 3 || 1), 0, 1),
-    items,
-    count: len,
-    velocity: len,
+    t: clean(timestamps),
+    o: clean(o),
+    h: clean(h),
+    l: clean(l),
+    c: clean(c),
+    v: clean(v)
   };
 }
 
-export function detectShock(sentiment: { S: number; E: number }, volumeRatio: number) {
-  const score = sentiment.E * Math.abs(sentiment.S) * Math.max(1, volumeRatio);
-  return { shock: score > 0.35, score };
+export async function fetchYahooQuote(ticker: string): Promise<number> {
+  const url = `${BASE}/v7/finance/quote?symbols=${ticker}`;
+  const data = await fetchJSON(url);
+
+  try {
+    const price = data.quoteResponse.result[0].regularMarketPrice;
+    return Number.isFinite(price) ? price : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function fetchYahooNews(ticker: string): Promise<any[]> {
+  const url = `${BASE}/v1/finance/search?q=${ticker}`;
+  const data = await fetchJSON(url);
+
+  if (!data || !Array.isArray(data.news)) return [];
+  return data.news;
 }
