@@ -1,56 +1,74 @@
-import { clamp, sma, logReturns, std, autocorrelation } from "./stats.ts";
-import { extractFeatures } from "./mlFeatures.ts";
-import { predictWithArtifact } from "./trainedModels.ts";
-import type { OHLC, Weights } from "./types.ts";
+export function safeDot(coef: number[], features: number[]): number {
+  if (!Array.isArray(coef) || !Array.isArray(features)) return 0;
 
-export function runEnsemble(
-  ohlc: OHLC,
-  sentimentS: number,
-  weights: Weights,
-  artifact: any | null,
-) {
-  const feats = extractFeatures(ohlc, sentimentS);
-  if (!feats) {
-    return { yhat: 0, components: {}, quality: 0.2 };
+  let sum = 0;
+  const len = Math.min(coef.length, features.length);
+
+  for (let i = 0; i < len; i++) {
+    const c = coef[i];
+    const f = features[i];
+    if (!Number.isFinite(c) || !Number.isFinite(f)) continue;
+    sum += c * f;
   }
 
-  const featureVec = [
-    feats.rsi, feats.macdHist, feats.smaSpread20_50, feats.smaSpread50_200,
-    feats.mom5, feats.mom10, feats.mom20, feats.vol20, feats.volRatio,
-    feats.sentiment, feats.volumeRatio, feats.hurst, feats.ret1, feats.ret5,
-  ];
+  return sum;
+}
 
-  // Heuristic heads
-  const markov = clamp(feats.mom5 * 0.6 + feats.ret1 * 0.4, -0.15, 0.15);
-  const arimaLstm = clamp(feats.mom10 * 0.5 + (0.5 - feats.rsi) * 0.08, -0.12, 0.12);
-  const lstm = clamp(feats.mom20 * 0.4 + feats.macdHist * 8, -0.12, 0.12);
-  const xgb = clamp(feats.smaSpread20_50 * 1.2 + feats.sentiment * 0.04, -0.1, 0.1);
-  const rf = clamp((feats.hurst - 0.5) * 0.15 + feats.volumeRatio * 0.03, -0.08, 0.08);
+export function ridgePredict(head: any, features: number[]): number {
+  if (!head || !Array.isArray(head.coef) || !Number.isFinite(head.intercept)) {
+    console.warn("Invalid ridge head:", head);
+    return 0;
+  }
 
-  let components: Record<string, number> = {
-    markov, arimaLstm, lstm, xgb, rf,
-  };
+  const dot = safeDot(head.coef, features);
+  const y = head.intercept + dot;
 
-  // Override with trained ridge if available
-  if (artifact) {
-    const trained = predictWithArtifact(artifact, featureVec);
-    components = {
-      markov: trained * 0.9,
-      arimaLstm: trained,
-      lstm: trained * 1.05,
-      xgb: trained * 0.95,
-      rf: trained * 0.85,
+  return Number.isFinite(y) ? y : 0;
+}
+
+export function classifySignal(value: number): string {
+  if (!Number.isFinite(value)) return "neutral";
+  if (value > 0.02) return "buy";
+  if (value < -0.02) return "sell";
+  return "neutral";
+}
+
+export function normalizeConfidence(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(Math.abs(value), 1);
+}
+
+export function runAllHeads(heads: any[], features: number[]) {
+  if (!Array.isArray(heads)) return [];
+
+  const results = [];
+
+  for (const head of heads) {
+    const output = ridgePredict(head, features);
+    results.push({
+      name: head.name ?? "unnamed",
+      output
+    });
+  }
+
+  return results;
+}
+
+export function aggregateHeads(results: any[]) {
+  if (!Array.isArray(results) || results.length === 0) {
+    return {
+      expectedReturn: 0,
+      confidence: 0,
+      signal: "neutral"
     };
   }
 
-  const yhat =
-    weights.markov * components.markov +
-    weights.arimaLstm * components.arimaLstm +
-    weights.lstm * components.lstm +
-    weights.xgb * components.xgb +
-    weights.rf * components.rf;
+  const avg =
+    results.reduce((sum, r) => sum + (r.output ?? 0), 0) / results.length;
 
-  const quality = clamp(0.45 + Math.abs(yhat) * 3 + (artifact ? 0.15 : 0), 0.2, 0.95);
-
-  return { yhat, components, quality, features: feats };
+  return {
+    expectedReturn: avg,
+    confidence: normalizeConfidence(avg),
+    signal: classifySignal(avg)
+  };
 }
