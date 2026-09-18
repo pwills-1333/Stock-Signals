@@ -11,3 +11,4 @@ export const config = {
 export const FINNHUB_API_KEY = Deno.env.get("FINNHUB_API_KEY");
 export const GOOGLE_CSE_KEY = Deno.env.get("GOOGLE_CSE_KEY");
 export const GOOGLE_CSE_CX = Deno.env.get("GOOGLE_CSE_CX");
+export const X_BEARER_TOKEN = Deno.env.get("X_BEARER_TOKEN");
