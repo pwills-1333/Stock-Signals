@@ -82,7 +82,7 @@ export function computeEngine(
   const psiIn = {
     S: combinedS,
     E: combinedE,
-    C: clamp(Math.abs(combinedS) * 0.6, 0, 1), // bias proxy
+    C: clamp(Math.abs(combinedS) * 0.6, 0, 1),
     M: clamp(volRatio / 3, 0, 1),
     T: regime === "trend" ? 0.4 : regime === "meanReversion" ? -0.3 : 0,
     corr: 0.4,
@@ -93,17 +93,14 @@ export function computeEngine(
     coherence: 0.5,
   });
 
-  // Apply Ψ drift
   expectedReturn += psiOut.drift * (horizonDays / 14);
 
   // CTR-A
   const events = buildMarketEvents(ticker, closes, vols, sent.items || [], regime);
   const ctr = runCTRA(events);
 
-  // GARCH-like vol
   const garchVol = (std(logReturns(closes).slice(-30)) || 0.02) * psiOut.volMult;
 
-  // Monte-Carlo rough
   const mcPaths = settings.mcPaths || 1500;
   const paths: number[] = [];
   for (let i = 0; i < mcPaths; i++) {
@@ -118,10 +115,8 @@ export function computeEngine(
   const p5 = paths[Math.floor(mcPaths * 0.05)];
   const p95 = paths[Math.floor(mcPaths * 0.95)];
 
-  // Final predicted price
   const predictedPrice = entryPrice * (1 + expectedReturn);
 
-  // Confidence & gates
   let confidence = clamp(
     ens.quality * 0.45 +
     ctr.R * 0.30 +
@@ -205,7 +200,15 @@ export function computeEngine(
     sourcesUsed: [],
   };
 
-  return { prediction, snapshot: { tech: { avgVolume: avgVol }, sentiment: sent, shock: detectShock(sent, volRatio), garch: { sigma: garchVol } } };
+  return {
+    prediction,
+    snapshot: {
+      tech: { avgVolume: avgVol },
+      sentiment: sent,
+      shock: detectShock(sent, volRatio),
+      garch: { sigma: garchVol },
+    },
+  };
 }
 
 export async function runAdvancedPipeline(
@@ -233,22 +236,18 @@ export async function runAdvancedPipeline(
   );
   prediction.sourcesUsed = sources;
 
-  import { trainedHeads } from "./trainedModels.ts";  // ← add at top of file if missing
-
-if (opts.persist !== false) {
-  const saved = await savePrediction(prediction);
-  return { 
-    prediction: saved, 
-    snapshot,
-    markov: modelArtifacts.markov   // ← ADD THIS LINE
-  };
-}
-
-return { 
-  prediction, 
-  snapshot,
-  markov: modelArtifacts.markov     // ← ADD THIS LINE
-};
+  if (opts.persist !== false) {
+    const saved = await savePrediction(prediction);
+    return {
+      prediction: saved,
+      snapshot,
+      markov: modelArtifacts.markov,
+    };
   }
-  return { prediction, snapshot };
+
+  return {
+    prediction,
+    snapshot,
+    markov: modelArtifacts.markov,
+  };
 }
