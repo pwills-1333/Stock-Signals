@@ -1,4 +1,4 @@
-import { fetchFinnhubOHLC, fetchQuote, fetchCompanyNews } from "./data/finnhub.ts";
+import { fetchFinnhubOHLC, fetchQuote } from "./data/finnhub.ts";
 import { fetchYahooOHLC, scoreSentiment, detectShock } from "./data/yahoo.ts";
 import { fetchBroadNews } from "./data/news.ts";
 import { fetchXPosts, scoreXSentiment } from "./data/xposts.ts";
@@ -28,7 +28,7 @@ export async function fetchInputData(ticker: string) {
       ohlcLong = longer;
       sources.push("yahoo-long");
     }
-  } catch { /* ignore */ }
+  } catch {}
 
   const news = await fetchBroadNews(ticker);
   const xposts = await fetchXPosts(ticker);
@@ -59,26 +59,21 @@ export function computeEngine(
   const combinedS = clamp((sent.S * 0.7 + xSent.S * 0.3), -1, 1);
   const combinedE = clamp((sent.E * 0.6 + xSent.E * 0.4), 0, 1);
 
-  // Volume ratio
   const vols = ohlc.v;
   const avgVol = vols.slice(-20).reduce((a, b) => a + b, 0) / 20 || 1;
   const volRatio = (vols[vols.length - 1] || 0) / avgVol;
 
-  // Regime
   const hurst = fractalBlend(0, closes).hurst;
   let regime: "trend" | "meanReversion" | "chaos" = "chaos";
   if (hurst > 0.58) regime = "trend";
   else if (hurst < 0.42) regime = "meanReversion";
 
-  // Ensemble
   const ens = runEnsemble(ohlc, combinedS, weights, opts.modelArtifacts);
   let expectedReturn = ens.yhat;
 
-  // Fractal adjustment
   const frac = fractalBlend(expectedReturn, closes);
   expectedReturn = frac.adjustedReturn;
 
-  // Ψ
   const psiIn = {
     S: combinedS,
     E: combinedE,
@@ -88,14 +83,10 @@ export function computeEngine(
     corr: 0.4,
     vol: std(logReturns(closes).slice(-20)) || 0.02,
   };
-  const psiOut = runPsi(opts.psiState, psiIn, {
-    error: 0,
-    coherence: 0.5,
-  });
+  const psiOut = runPsi(opts.psiState, psiIn, { error: 0, coherence: 0.5 });
 
   expectedReturn += psiOut.drift * (horizonDays / 14);
 
-  // CTR-A
   const events = buildMarketEvents(ticker, closes, vols, sent.items || [], regime);
   const ctr = runCTRA(events);
 
@@ -134,11 +125,6 @@ export function computeEngine(
   } else if (ctr.R < settings.minCoherenceR || ctr.GI < settings.minGI) {
     signal = "AVOID";
   }
-
-  const tradeGrade =
-    confidence > 0.75 && Math.abs(expectedReturn) > 0.04 ? "A" :
-    confidence > 0.6 && Math.abs(expectedReturn) > 0.025 ? "B" :
-    confidence > 0.45 ? "C" : "D";
 
   const atrVal = atr(ohlc.h, ohlc.l, ohlc.c);
   const stopLoss = signal === "BUY" ? entryPrice - 1.8 * atrVal : entryPrice + 1.8 * atrVal;
