@@ -1,76 +1,86 @@
 import { ARTIFACTS_PATH } from "./config.ts";
 
-let artifacts: any = null;
+let cached: any = null;
 
 export async function loadModelArtifacts() {
-  if (artifacts) return artifacts;
+  if (cached) return cached;
 
   try {
-    const raw = await Deno.readTextFile(ARTIFACTS_PATH);
-    const parsed = JSON.parse(raw);
+    const text = await Deno.readTextFile(ARTIFACTS_PATH);
+    const parsed = JSON.parse(text);
 
-    if (!parsed || typeof parsed !== "object") {
-      throw new Error("Artifacts JSON malformed");
+    if (!parsed || !Array.isArray(parsed.heads)) {
+      console.error("Invalid artifact format:", parsed);
+      cached = null;
+      return null;
     }
 
-    artifacts = parsed;
-    console.log("Loaded model artifacts:", ARTIFACTS_PATH);
-    return artifacts;
-
-  } catch (err) {
-    console.error("Failed to load model artifacts:", err);
-    artifacts = {
-      heads: [],
-      fallback: true
-    };
-    return artifacts;
+    cached = parsed;
+    console.log("Loaded trained heads from", ARTIFACTS_PATH);
+    return cached;
+  } catch {
+    console.log("No trained artifacts found – using heuristic heads");
+    cached = null;
+    return null;
   }
 }
 
-export function runModels(features: number[]) {
-  if (!artifacts || artifacts.fallback) {
-    return {
-      expectedReturn: 0,
-      confidence: 0,
-      signal: "neutral",
-      heads: []
-    };
+export function predictWithArtifact(head: any, features: number[]): number {
+  if (!head || !Array.isArray(head.coef) || !Number.isFinite(head.intercept)) {
+    return 0;
   }
 
-  if (!Array.isArray(features) || features.some((x) => !Number.isFinite(x))) {
-    return {
-      expectedReturn: 0,
-      confidence: 0,
-      signal: "neutral",
-      heads: [],
-      error: "Invalid feature vector"
-    };
-  }
+  let y = head.intercept;
 
-  const results: any[] = [];
-
-  for (const head of artifacts.heads ?? []) {
-    if (!head?.coef || !head?.intercept) continue;
-
-    let y = head.intercept;
-    for (let i = 0; i < head.coef.length && i < features.length; i++) {
-      y += head.coef[i] * features[i];
+  const len = Math.min(head.coef.length, features.length);
+  for (let i = 0; i < len; i++) {
+    const c = head.coef[i];
+    const f = features[i];
+    if (Number.isFinite(c) && Number.isFinite(f)) {
+      y += c * f;
     }
+  }
 
+  return Number.isFinite(y) ? y : 0;
+}
+
+export function runAllHeads(artifact: any, features: number[]) {
+  if (!artifact || !Array.isArray(artifact.heads)) return [];
+
+  const results = [];
+
+  for (const head of artifact.heads) {
+    const output = predictWithArtifact(head, features);
     results.push({
       name: head.name ?? "unnamed",
-      output: y
+      output
     });
   }
 
-  const avg = results.length
-    ? results.reduce((a, b) => a + b.output, 0) / results.length
-    : 0;
+  return results;
+}
+
+export function aggregateHeads(results: any[]) {
+  if (!Array.isArray(results) || results.length === 0) {
+    return {
+      expectedReturn: 0,
+      confidence: 0,
+      signal: "neutral"
+    };
+  }
+
+  const avg =
+    results.reduce((sum, r) => sum + (r.output ?? 0), 0) / results.length;
+
+  const confidence = Math.min(Math.abs(avg), 1);
+
+  let signal = "neutral";
+  if (avg > 0.02) signal = "buy";
+  if (avg < -0.02) signal = "sell";
 
   return {
     expectedReturn: avg,
-    confidence: Math.min(Math.abs(avg), 1),
-    signal: avg > 0 ? "buy" : avg < 0 ? "sell" : "neutral",
-    heads: results
+    confidence,
+    signal
   };
 }
