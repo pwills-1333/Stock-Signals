@@ -1,40 +1,27 @@
-import { Prediction } from "./types.ts";
+import { getOutcomes } from "./store.ts";
 
-export function computeKelly(modelOutput: any): number {
-  if (!modelOutput || !Number.isFinite(modelOutput.expectedReturn)) {
-    return 0;
-  }
+export async function optimizeWeights(): Promise<{
+  updated: boolean;
+  weights: Record<string, number>;
+}> {
+  const outcomes = getOutcomes();
 
-  const r = modelOutput.expectedReturn;
-  const p = Math.min(Math.max((r + 1) / 2, 0), 1);
-  const q = 1 - p;
-
-  const kelly = p - q;
-  return Number.isFinite(kelly) ? Math.max(Math.min(kelly, 1), -1) : 0;
-}
-
-export function optimizeWeights(records: Prediction[]) {
-  if (!Array.isArray(records) || records.length === 0) {
+  if (!Array.isArray(outcomes) || outcomes.length < 5) {
     return {
-      markov: 0.15,
-      arimaLstm: 0.28,
-      lstm: 0.22,
-      xgb: 0.20,
-      rf: 0.15
+      updated: false,
+      weights: {}
     };
   }
 
-  const hits = records.filter((r) => r.resolved && r.hit);
-  const misses = records.filter((r) => r.resolved && !r.hit);
+  const featureNames = [
+    "markov",
+    "arimaLstm",
+    "lstm",
+    "xgb",
+    "rf"
+  ];
 
-  const score = (arr: Prediction[]) =>
-    arr.reduce((a, r) => a + Math.abs(r.expectedReturn || 0), 0) /
-    (arr.length || 1);
-
-  const hitScore = score(hits);
-  const missScore = score(misses);
-
-  const base = {
+  const baseWeights: Record<string, number> = {
     markov: 0.15,
     arimaLstm: 0.28,
     lstm: 0.22,
@@ -42,25 +29,32 @@ export function optimizeWeights(records: Prediction[]) {
     rf: 0.15
   };
 
-  const adj = (v: number) => {
-    const s = hitScore - missScore;
-    const out = v + s * 0.1;
-    return Math.max(0.05, Math.min(out, 0.45));
-  };
+  const hits = outcomes.filter((o) => o.hit);
+  const misses = outcomes.filter((o) => !o.hit);
 
-  const updated = {
-    markov: adj(base.markov),
-    arimaLstm: adj(base.arimaLstm),
-    lstm: adj(base.lstm),
-    xgb: adj(base.xgb),
-    rf: adj(base.rf)
-  };
+  const score = (arr: any[]) =>
+    arr.reduce((a, r) => a + Math.abs(r.expectedReturn ?? 0), 0) /
+    (arr.length || 1);
 
-  const total = Object.values(updated).reduce((a, b) => a + b, 0) || 1;
+  const hitScore = score(hits);
+  const missScore = score(misses);
 
-  for (const k of Object.keys(updated)) {
-    updated[k] = updated[k] / total;
+  const delta = hitScore - missScore;
+
+  const adjusted: Record<string, number> = {};
+  for (const f of featureNames) {
+    const v = baseWeights[f];
+    const newV = v + delta * 0.1;
+    adjusted[f] = Math.max(0.05, Math.min(0.45, newV));
   }
 
-  return updated;
+  const total = Object.values(adjusted).reduce((a, b) => a + b, 0) || 1;
+  for (const f of featureNames) {
+    adjusted[f] = adjusted[f] / total;
+  }
+
+  return {
+    updated: true,
+    weights: adjusted
+  };
 }
