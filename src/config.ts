@@ -8,3 +8,4 @@ export const config = {
   dataDir: process.env.DATA_DIR || "./data",
   storePath: process.env.STORE_PATH || "./data/store.json",
 };
+export const FINNHUB_API_KEY = Deno.env.get("FINNHUB_API_KEY");
