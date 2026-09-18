@@ -9,3 +9,5 @@ export const config = {
   storePath: process.env.STORE_PATH || "./data/store.json",
 };
 export const FINNHUB_API_KEY = Deno.env.get("FINNHUB_API_KEY");
+export const GOOGLE_CSE_KEY = Deno.env.get("GOOGLE_CSE_KEY");
+export const GOOGLE_CSE_CX = Deno.env.get("GOOGLE_CSE_CX");
