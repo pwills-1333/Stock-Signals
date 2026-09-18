@@ -1,69 +1,55 @@
 import { clamp } from "../stats.ts";
 
-export interface PsiInputs {
-  S: number;   // Sentiment [-1,1]
-  E: number;   // Emotional intensity [0,1]
-  C: number;   // Cognitive bias [0,1]
-  M: number;   // Motivation [0,1]
-  T: number;   // Thinking style [-1,1] (System1 vs System2 proxy)
-  corr: number;
-  vol: number;
+export function psiReturn(expectedReturn: number): number {
+  if (!Number.isFinite(expectedReturn)) return 0;
+  return clamp(expectedReturn, -1, 1);
 }
 
-export interface PsiWeights {
-  ws: number;
-  we: number;
-  wc: number;
-  wm: number;
-  wt: number;
+export function psiConfidence(confidence: number): number {
+  if (!Number.isFinite(confidence)) return 0;
+  return clamp(confidence, 0, 1);
 }
 
-export const DEFAULT_PSI_WEIGHTS: PsiWeights = {
-  ws: 0.30,
-  we: 0.25,
-  wc: 0.20,
-  wm: 0.15,
-  wt: 0.10,
-};
-
-/** Psych Bias Scalar */
-export function psychBias(S: number, corr: number, vol: number): number {
-  return S * corr * (1 + vol);
+export function psiVolatility(vol: number): number {
+  if (!Number.isFinite(vol) || vol <= 0) return 0;
+  return clamp(1 / (1 + vol), 0, 1);
 }
 
-/** Core Ψ */
-export function corePsi(inp: PsiInputs, w: PsiWeights): number {
-  return w.ws * inp.S + w.we * inp.E + w.wc * inp.C + w.wm * inp.M;
+export function psiTrend(trendBias: number): number {
+  if (!Number.isFinite(trendBias)) return 0;
+  return clamp(trendBias, -1, 1);
 }
 
-/** Thinking-style extension */
-export function extendedPsi(core: number, T: number, wt: number): number {
-  return core + wt * T;
+export function psiChaos(chaos: boolean): number {
+  return chaos ? 0 : 1;
 }
 
-/** Unified Ψ_total */
-export function psiTotal(psych: number, core: number, extended: number): number {
-  return 0.35 * psych + 0.40 * core + 0.25 * extended;
+export function psiComposite(params: {
+  expectedReturn: number;
+  confidence: number;
+  volatility: number;
+  trendBias: number;
+  chaos: boolean;
+}): number {
+  const r = psiReturn(params.expectedReturn);
+  const c = psiConfidence(params.confidence);
+  const v = psiVolatility(params.volatility);
+  const t = psiTrend(params.trendBias);
+  const ch = psiChaos(params.chaos);
+
+  const score = r * 0.35 + c * 0.25 + v * 0.15 + t * 0.15 + ch * 0.10;
+
+  return clamp(score, -1, 1);
 }
 
-/** Simple dynamic Ψ(t) with momentum + mean-reversion */
-export function dynamicPsi(
-  prev: number,
-  current: number,
-  error: number,
-  coherence: number,
-): number {
-  const momentum = 0.65 * prev + 0.35 * current;
-  const correction = -0.15 * error + 0.10 * coherence;
-  return clamp(momentum + correction, -2, 2);
+export function psiGrade(psi: number): number {
+  if (!Number.isFinite(psi)) return 0;
+  return clamp((psi + 1) / 2, 0, 1);
 }
 
-/** Ψ-driven drift */
-export function psiDrift(psiTotal: number): number {
-  return 0.15 * Math.tanh(psiTotal);
-}
-
-/** Ψ-driven volatility */
-export function psiVolatility(baseVol: number, psiTotal: number): number {
-  return baseVol * (1 + 0.6 * Math.abs(psiTotal));
+export function psiSignal(psi: number): string {
+  if (!Number.isFinite(psi)) return "neutral";
+  if (psi > 0.25) return "buy";
+  if (psi < -0.25) return "sell";
+  return "neutral";
 }
