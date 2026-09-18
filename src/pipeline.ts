@@ -1,7 +1,8 @@
-import { loadModelArtifacts, runAllHeads, aggregateHeads } from "./trainedModels.ts";
+import { runAllHeads, aggregateHeads } from "./trainedModels.ts";
 import { OHLC, Prediction } from "./types.ts";
-import { buildFeatures } from "./features.ts";
+import { buildFeatures } from "./mlFeatures.ts";
 import { fetchOHLC } from "./data.ts";
+import { loadAllArtifacts } from "./artifacts/multiArtifacts.ts";
 
 export async function predict(input: {
   ticker: string;
@@ -42,10 +43,10 @@ export async function predict(input: {
 
   const features = buildFeatures(ohlc);
 
-  const artifact = await loadModelArtifacts();
+  const artifact = await loadAllArtifacts("src/artifacts");
   let expectedReturn = 0;
   let confidence = 0;
-  let signal = "neutral";
+  let signal: Prediction["signal"] = "neutral";
 
   if (artifact) {
     const headOutputs = runAllHeads(artifact, features);
