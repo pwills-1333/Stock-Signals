@@ -1,73 +1,76 @@
-import { STORE_PATH, DEFAULT_WEIGHTS, DEFAULT_SETTINGS } from "./config.ts";
-import type { Prediction, AccuracyRecord, Weights, Settings } from "./types.ts";
+import { Prediction, AccuracyRecord } from "./types.ts";
 
-async function ensureDir() {
-  try {
-    await Deno.mkdir("./data", { recursive: true });
-  } catch { /* exists */ }
+const predictions: Prediction[] = [];
+const accuracy: AccuracyRecord[] = [];
+
+export function savePrediction(p: Prediction) {
+  const id = crypto.randomUUID();
+  const createdAt = new Date().toISOString();
+
+  const stored: Prediction = {
+    ...p,
+    id,
+    createdAt,
+    resolved: false
+  };
+
+  predictions.push(stored);
+  return stored;
 }
 
-async function readStore(): Promise<any> {
-  await ensureDir();
-  try {
-    const text = await Deno.readTextFile(STORE_PATH);
-    return JSON.parse(text);
-  } catch {
-    return { predictions: [], accuracy: [], weights: DEFAULT_WEIGHTS, settings: DEFAULT_SETTINGS };
+export function listPredictions() {
+  return predictions;
+}
+
+export function listAccuracy() {
+  return accuracy;
+}
+
+export function resolvePrediction(id: string, actualPrice: number) {
+  const p = predictions.find((x) => x.id === id);
+  if (!p) return null;
+
+  p.resolved = true;
+  p.actualPrice = actualPrice;
+
+  if (Number.isFinite(actualPrice) && actualPrice > 0) {
+    p.errorPct = (p.predictedPrice - actualPrice) / actualPrice;
+  } else {
+    p.errorPct = 0;
   }
+
+  const hit = Math.abs(p.errorPct ?? 0) < 0.05;
+
+  const rec: AccuracyRecord = {
+    id: crypto.randomUUID(),
+    ticker: p.ticker,
+    predictionId: id,
+    horizonDays: p.horizonDays,
+    entryPrice: p.entryPrice,
+    predictedPrice: p.predictedPrice,
+    expectedReturn: p.expectedReturn,
+    confidence: p.confidence,
+    signal: p.signal,
+    tradeGrade: p.tradeGrade,
+    signalQuality: p.signalQuality,
+    regime: p.regime,
+    actualPrice,
+    errorPct: p.errorPct ?? 0,
+    hit,
+    createdAt: new Date().toISOString()
+  };
+
+  accuracy.push(rec);
+  return rec;
 }
 
-async function writeStore(data: any) {
-  await ensureDir();
-  await Deno.writeTextFile(STORE_PATH, JSON.stringify(data, null, 2));
-}
-
-export async function savePrediction(p: Prediction): Promise<Prediction> {
-  const store = await readStore();
-  p.id = crypto.randomUUID();
-  store.predictions.push(p);
-  await writeStore(store);
-  return p;
-}
-
-export async function listPredictions(): Promise<Prediction[]> {
-  const store = await readStore();
-  return store.predictions || [];
-}
-
-export async function updatePrediction(id: string, patch: Partial<Prediction>) {
-  const store = await readStore();
-  const idx = store.predictions.findIndex((x: Prediction) => x.id === id);
-  if (idx >= 0) {
-    store.predictions[idx] = { ...store.predictions[idx], ...patch };
-    await writeStore(store);
-  }
-}
-
-export async function saveAccuracy(rec: AccuracyRecord) {
-  const store = await readStore();
-  rec.id = crypto.randomUUID();
-  store.accuracy.push(rec);
-  await writeStore(store);
-}
-
-export async function listAccuracy(): Promise<AccuracyRecord[]> {
-  const store = await readStore();
-  return store.accuracy || [];
-}
-
-export async function getWeights(): Promise<Weights> {
-  const store = await readStore();
-  return store.weights || DEFAULT_WEIGHTS;
-}
-
-export async function saveWeights(w: Weights) {
-  const store = await readStore();
-  store.weights = w;
-  await writeStore(store);
-}
-
-export async function getSettings(): Promise<Settings> {
-  const store = await readStore();
-  return { ...DEFAULT_SETTINGS, ...(store.settings || {}) };
+export function resolveAll() {
+  return {
+    count: accuracy.length,
+    avgError:
+      accuracy.length === 0
+        ? 0
+        : accuracy.reduce((a, r) => a + Math.abs(r.errorPct), 0) /
+          accuracy.length
+  };
 }
