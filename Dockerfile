@@ -1,11 +1,11 @@
+# FORCE REBUILD
+ARG CACHEBUST=1
+
 FROM denoland/deno:2.1.4
 
 WORKDIR /app
 
-# Copy everything from the repo root
 COPY . .
-
-# Ensure artifacts are in the right place
 COPY artifacts/ /app/artifacts/
 
 RUN deno cache src/main.ts || true
