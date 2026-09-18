@@ -2,11 +2,11 @@ FROM denoland/deno:2.1.4
 
 WORKDIR /app
 
-# Copy backend code from the correct folder
-COPY Stock-Signals/ .
+# Copy everything from the repo root
+COPY . .
 
-# Copy artifacts
-COPY Stock-Signals/artifacts/ /app/artifacts/
+# Ensure artifacts are in the right place
+COPY artifacts/ /app/artifacts/
 
 RUN deno cache src/main.ts || true
 
