@@ -1,0 +1,40 @@
+{
+  "model": "ridge_features_v1",
+  "horizonDays": 14,
+  "coef": [
+    0.018,   // rsi
+    0.004,   // macdHist
+    0.022,   // smaSpread20_50
+    0.031,   // smaSpread50_200
+    0.015,   // mom5
+    0.019,   // mom10
+    0.028,   // mom20
+    0.042,   // vol20
+    0.033,   // volRatio
+    0.055,   // sentiment (Ψ S)
+    0.047,   // volumeRatio (Ψ E)
+    0.026,   // hurst (structure)
+    0.014,   // ret1
+    0.021    // ret5
+  ],
+  "intercept": 0.003,
+  "meta": {
+    "psiWeights": {
+      "s": 0.22,
+      "e": 0.20,
+      "c": 0.18,
+      "m": 0.22,
+      "t": 0.18
+    },
+    "coherence": {
+      "temporal": 0.72,
+      "structural": 0.68,
+      "semantic": 0.64,
+      "harmonic": 0.61,
+      "predictive": 0.66,
+      "globalIntegration": 0.71,
+      "recursive": 0.55
+    },
+    "notes": "Synthetic starter model generated from Ψ system + CTR-A coherence equations."
+  }
+}
