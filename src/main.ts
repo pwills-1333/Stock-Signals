@@ -5,9 +5,10 @@ import { loadModelArtifacts } from "./trainedModels.ts";
 
 await loadModelArtifacts();
 
-console.log(`Stock Signal Engine (Ψ + CTR-A) + Mobile UI listening on http://localhost:${PORT}`);
+const port = Number(Deno.env.get("PORT") ?? PORT);
+console.log(`Stock Signal Engine (Ψ + CTR-A) listening on port ${port}`);
 
-Deno.serve({ port: PORT }, async (req) => {
+Deno.serve({ port }, async (req) => {
   const url = new URL(req.url);
 
   // Serve mobile UI
