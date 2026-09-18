@@ -16,3 +16,4 @@ export const ARTIFACTS_PATH = Deno.env.get("ARTIFACTS_PATH");
 export const DEFAULT_SETTINGS = Deno.env.get("DEFAULT_SETTINGS");
 export const DEFAULT_WEIGHTS = Deno.env.get("DEFAULT_WEIGHTS");
 export const STORE_PATH = Deno.env.get("STORE_PATH");
+export const PORT = Number(Deno.env.get("PORT")) || 8000;
