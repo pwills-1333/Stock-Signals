@@ -180,7 +180,7 @@
   </nav>
 
   <script>
-    const API = window.location.origin; // same origin on Railway
+    const API = "https://stock-signals-production-1360.up.railway.app";
 
     async function loadTicker(ticker = null) {
       const t = (ticker || document.getElementById('tickerInput').value || 'AAPL').toUpperCase().trim();
