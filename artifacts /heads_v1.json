@@ -1,23 +1,24 @@
 {
-  "model": "ridge_features_v1",
+  "ridge_features": {
+    "coef": [
+      0.018,
+      0.004,
+      0.022,
+      0.031,
+      0.015,
+      0.019,
+      0.028,
+      0.042,
+      0.033,
+      0.055,
+      0.047,
+      0.026,
+      0.014,
+      0.021
+    ],
+    "intercept": 0.003
+  },
   "horizonDays": 14,
-  "coef": [
-    0.018,   // rsi
-    0.004,   // macdHist
-    0.022,   // smaSpread20_50
-    0.031,   // smaSpread50_200
-    0.015,   // mom5
-    0.019,   // mom10
-    0.028,   // mom20
-    0.042,   // vol20
-    0.033,   // volRatio
-    0.055,   // sentiment (Ψ S)
-    0.047,   // volumeRatio (Ψ E)
-    0.026,   // hurst (structure)
-    0.014,   // ret1
-    0.021    // ret5
-  ],
-  "intercept": 0.003,
   "meta": {
     "psiWeights": {
       "s": 0.22,
@@ -35,6 +36,6 @@
       "globalIntegration": 0.71,
       "recursive": 0.55
     },
-    "notes": "Synthetic starter model generated from Ψ system + CTR-A coherence equations."
+    "notes": "Starter trained model compatible with Stock-Signal Engine."
   }
 }
