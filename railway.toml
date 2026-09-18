@@ -1,10 +1,9 @@
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
+include = ["src", "artifacts"]
 
 [deploy]
 healthcheckPath = "/health"
 healthcheckTimeout = 30
-restartPolicyType = "ON_FAILURE"
-[build]
-include = ["src", "artifacts"]
+restartPolicyTypeType = "ON_FAILURE"
