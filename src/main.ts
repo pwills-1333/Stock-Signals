@@ -1,3 +1,4 @@
+console.log("App starting...");
 import { PORT } from "./config.ts";
 import { handleRequest } from "./routes.ts";
 import { loadModelArtifacts } from "./trainedModels.ts";
