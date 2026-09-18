@@ -17,7 +17,6 @@ COPY public/ /app/public/
 # Cache dependencies
 RUN deno cache src/main.ts || true
 
-# Railway will inject PORT, but we expose 8000 for local dev
 EXPOSE 8000
 
 CMD ["deno", "run", "-A", "src/main.ts"]
