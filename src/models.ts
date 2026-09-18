@@ -1,61 +1,52 @@
-export function safeDot(coef: number[], features: number[]): number {
-  if (!Array.isArray(coef) || !Array.isArray(features)) return 0;
-
-  let sum = 0;
-  const len = Math.min(coef.length, features.length);
-
-  for (let i = 0; i < len; i++) {
-    const c = coef[i];
-    const f = features[i];
-    if (!Number.isFinite(c) || !Number.isFinite(f)) continue;
-    sum += c * f;
-  }
-
-  return sum;
+export interface RidgeHead {
+  name: string;
+  coef: number[];
+  intercept: number;
 }
 
-export function ridgePredict(head: any, features: number[]): number {
+export interface ModelArtifact {
+  version: string;
+  feature_count: number;
+  heads: RidgeHead[];
+}
+
+export function runRidgeHead(head: RidgeHead, features: number[]): number {
   if (!head || !Array.isArray(head.coef) || !Number.isFinite(head.intercept)) {
-    console.warn("Invalid ridge head:", head);
     return 0;
   }
 
-  const dot = safeDot(head.coef, features);
-  const y = head.intercept + dot;
+  let y = head.intercept;
+
+  const len = Math.min(head.coef.length, features.length);
+  for (let i = 0; i < len; i++) {
+    const c = head.coef[i];
+    const f = features[i];
+    if (Number.isFinite(c) && Number.isFinite(f)) {
+      y += c * f;
+    }
+  }
 
   return Number.isFinite(y) ? y : 0;
 }
 
-export function classifySignal(value: number): string {
-  if (!Number.isFinite(value)) return "neutral";
-  if (value > 0.02) return "buy";
-  if (value < -0.02) return "sell";
-  return "neutral";
-}
+export function runAllHeads(artifact: ModelArtifact, features: number[]) {
+  if (!artifact || !Array.isArray(artifact.heads)) return [];
 
-export function normalizeConfidence(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.min(Math.abs(value), 1);
-}
+  const outputs = [];
 
-export function runAllHeads(heads: any[], features: number[]) {
-  if (!Array.isArray(heads)) return [];
-
-  const results = [];
-
-  for (const head of heads) {
-    const output = ridgePredict(head, features);
-    results.push({
-      name: head.name ?? "unnamed",
-      output
+  for (const head of artifact.heads) {
+    const out = runRidgeHead(head, features);
+    outputs.push({
+      name: head.name,
+      output: out
     });
   }
 
-  return results;
+  return outputs;
 }
 
-export function aggregateHeads(results: any[]) {
-  if (!Array.isArray(results) || results.length === 0) {
+export function aggregateHeadOutputs(outputs: { name: string; output: number }[]) {
+  if (!Array.isArray(outputs) || outputs.length === 0) {
     return {
       expectedReturn: 0,
       confidence: 0,
@@ -64,11 +55,17 @@ export function aggregateHeads(results: any[]) {
   }
 
   const avg =
-    results.reduce((sum, r) => sum + (r.output ?? 0), 0) / results.length;
+    outputs.reduce((sum, r) => sum + (r.output ?? 0), 0) / outputs.length;
+
+  const confidence = Math.min(Math.abs(avg), 1);
+
+  let signal = "neutral";
+  if (avg > 0.02) signal = "buy";
+  if (avg < -0.02) signal = "sell";
 
   return {
     expectedReturn: avg,
-    confidence: normalizeConfidence(avg),
-    signal: classifySignal(avg)
+    confidence,
+    signal
   };
 }
