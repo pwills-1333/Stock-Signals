@@ -1,45 +1,62 @@
-import { GOOGLE_CSE_KEY, GOOGLE_CSE_CX } from "../config.ts";
-import { fetchCompanyNews } from "./finnhub.ts";
-import { fetchYahooNews } from "./yahoo.ts";
+const BASE = "https://newsapi.org/v2/everything";
 
-export async function fetchBroadNews(ticker: string, limit = 15) {
-  const results: { title: string; summary: string }[] = [];
-
-  // 1. freenewsapi.ai (no key)
+async function fetchJSON(url: string): Promise<any> {
   try {
-    const url = `https://freenewsapi.ai/v1/search?q=${encodeURIComponent(ticker + " stock OR earnings OR analyst")}&size=${limit}`;
     const res = await fetch(url);
-    if (res.ok) {
-      const j = await res.json();
-      for (const n of j.results || []) {
-        results.push({ title: n.title || "", summary: n.description || n.summary || "" });
-      }
-    }
-  } catch { /* ignore */ }
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
 
-  // 2. Optional Google Custom Search
-  if (GOOGLE_CSE_KEY && GOOGLE_CSE_CX && results.length < limit) {
-    try {
-      const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_CSE_KEY}&cx=${GOOGLE_CSE_CX}&q=${encodeURIComponent(ticker + " stock news")}&num=10`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const j = await res.json();
-        for (const item of j.items || []) {
-          results.push({ title: item.title || "", summary: item.snippet || "" });
-        }
-      }
-    } catch { /* ignore */ }
+export async function fetchNews(ticker: string): Promise<any[]> {
+  const apiKey = Deno.env.get("NEWS_API_KEY");
+  if (!apiKey) return [];
+
+  const query = encodeURIComponent(`${ticker} stock OR ${ticker} shares`);
+  const url = `${BASE}?q=${query}&sortBy=publishedAt&language=en&apiKey=${apiKey}`;
+
+  const data = await fetchJSON(url);
+  if (!data || !Array.isArray(data.articles)) return [];
+
+  return data.articles.map((a: any) => ({
+    title: a.title ?? "",
+    description: a.description ?? "",
+    url: a.url ?? "",
+    publishedAt: a.publishedAt ?? "",
+    source: a.source?.name ?? ""
+  }));
+}
+
+export async function scoreNewsSentiment(ticker: string): Promise<{
+  score: number;
+  magnitude: number;
+}> {
+  const articles = await fetchNews(ticker);
+  if (articles.length === 0) {
+    return { score: 0, magnitude: 0 };
   }
 
-  // 3. Fallbacks
-  if (results.length < 5) {
-    const fh = await fetchCompanyNews(ticker);
-    results.push(...fh);
-  }
-  if (results.length < 5) {
-    const yh = await fetchYahooNews(ticker);
-    results.push(...yh);
+  let score = 0;
+  let magnitude = 0;
+
+  for (const a of articles) {
+    const t = `${a.title} ${a.description}`.toLowerCase();
+
+    if (t.includes("upgrade") || t.includes("beats") || t.includes("strong"))
+      score += 1;
+
+    if (t.includes("downgrade") || t.includes("misses") || t.includes("weak"))
+      score -= 1;
+
+    magnitude += 1;
   }
 
-  return results.slice(0, limit);
+  const finalScore = magnitude > 0 ? score / magnitude : 0;
+
+  return {
+    score: finalScore,
+    magnitude
+  };
 }
