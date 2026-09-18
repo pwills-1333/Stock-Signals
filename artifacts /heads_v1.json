@@ -17,25 +17,6 @@
       0.021
     ],
     "intercept": 0.003
-  },
-  "horizonDays": 14,
-  "meta": {
-    "psiWeights": {
-      "s": 0.22,
-      "e": 0.20,
-      "c": 0.18,
-      "m": 0.22,
-      "t": 0.18
-    },
-    "coherence": {
-      "temporal": 0.72,
-      "structural": 0.68,
-      "semantic": 0.64,
-      "harmonic": 0.61,
-      "predictive": 0.66,
-      "globalIntegration": 0.71,
-      "recursive": 0.55
-    },
-    "notes": "Starter trained model compatible with Stock-Signal Engine."
   }
 }
+
