@@ -1,106 +1,88 @@
-import { fetchYahooData, fetchFinnhubData } from "./yahoo.ts";
-import { fetchNews } from "./news.ts";
-import { fetchXPosts } from "./xposts.ts";
-import { buildFeatures } from "./mlFeatures.ts";
-import { runModels } from "./trainedModels.ts";
-import { computeFractalRegime } from "./fractal.ts";
-import { computePsi } from "./adaptivePsi.ts";
-import { computeKelly } from "./optimizer.ts";
-import { generateRationale } from "./formulas.ts";
+import { loadModelArtifacts, runAllHeads, aggregateHeads } from "./trainedModels.ts";
+import { OHLC, Prediction } from "./types.ts";
+import { buildFeatures } from "./features.ts";
+import { fetchOHLC } from "./data.ts";
 
-export async function predict(input: any) {
-  if (!input || typeof input.ticker !== "string") {
-    return { error: "Invalid request: missing ticker" };
-  }
+export async function predict(input: {
+  ticker: string;
+  horizonDays: number;
+}): Promise<Prediction> {
+  const { ticker, horizonDays } = input;
 
-  const ticker = input.ticker.toUpperCase();
-  console.log(`Pipeline start for ${ticker}`);
-
-  try {
-    // -----------------------------
-    // 1. Fetch OHLC data
-    // -----------------------------
-    let ohlc = await fetchYahooData(ticker).catch(() => null);
-    if (!ohlc) {
-      ohlc = await fetchFinnhubData(ticker).catch(() => null);
-    }
-    if (!ohlc) {
-      return { error: "No OHLC data available for ticker" };
-    }
-
-    // -----------------------------
-    // 2. Fetch news + sentiment
-    // -----------------------------
-    const news = await fetchNews(ticker).catch(() => []);
-    const posts = await fetchXPosts(ticker).catch(() => []);
-
-    // -----------------------------
-    // 3. Build feature vector
-    // -----------------------------
-    const features = buildFeatures(ohlc);
-    if (!Array.isArray(features) || features.length === 0) {
-      return { error: "Feature generation failed" };
-    }
-
-    // -----------------------------
-    // 4. Run ML heads
-    // -----------------------------
-    const modelOutput = await runModels(features).catch(() => null);
-    if (!modelOutput) {
-      return { error: "Model inference failed" };
-    }
-
-    // -----------------------------
-    // 5. Compute fractal regime
-    // -----------------------------
-    const regime = computeFractalRegime(ohlc);
-
-    // -----------------------------
-    // 6. Compute Ψ adaptive score
-    // -----------------------------
-    const psi = computePsi(features, modelOutput);
-
-    // -----------------------------
-    // 7. Compute Kelly sizing
-    // -----------------------------
-    const kelly = computeKelly(modelOutput);
-
-    // -----------------------------
-    // 8. Generate rationale
-    // -----------------------------
-    const rationale = generateRationale({
-      ticker,
-      regime,
-      psi,
-      kelly,
-      modelOutput,
-      news,
-      posts
-    });
-
-    // -----------------------------
-    // 9. Final normalized output
-    // -----------------------------
+  const ohlc: OHLC | null = await fetchOHLC(ticker);
+  if (!ohlc || ohlc.c.length < 50) {
     return {
       ticker,
-      regime,
-      psi,
-      kelly,
-      expectedReturn: modelOutput.expectedReturn ?? 0,
-      confidence: modelOutput.confidence ?? 0,
-      signal: modelOutput.signal ?? "neutral",
-      rationale,
-      features,
-      models: modelOutput,
-      news,
-      sentiment: posts
-    };
-
-  } catch (err) {
-    console.error("Pipeline error:", err);
-    return {
-      error: "Pipeline failed",
-      details: err instanceof Error ? err.message : String(err)
+      assetType: "equity",
+      horizonDays,
+      entryPrice: 0,
+      predictedPrice: 0,
+      expectedReturn: 0,
+      confidence: 0,
+      signal: "neutral",
+      tradeGrade: 0,
+      signalQuality: 0,
+      regime: "trend",
+      ctmu: 0,
+      psi: 0,
+      bayes: 0,
+      ensemble: 0,
+      mc: 0,
+      garchVol: 0,
+      hurst: 0,
+      stopLoss: 0,
+      takeProfit: 0,
+      kellyPct: 0,
+      rationale: "Insufficient data",
+      resolved: false,
+      horizonEndDate: new Date(Date.now() + horizonDays * 86400000).toISOString(),
+      createdAt: new Date().toISOString()
     };
   }
+
+  const features = buildFeatures(ohlc);
+
+  const artifact = await loadModelArtifacts();
+  let expectedReturn = 0;
+  let confidence = 0;
+  let signal = "neutral";
+
+  if (artifact) {
+    const headOutputs = runAllHeads(artifact, features);
+    const agg = aggregateHeads(headOutputs);
+    expectedReturn = agg.expectedReturn;
+    confidence = agg.confidence;
+    signal = agg.signal;
+  }
+
+  const entryPrice = ohlc.c[ohlc.c.length - 1];
+  const predictedPrice = entryPrice * (1 + expectedReturn);
+
+  return {
+    ticker,
+    assetType: "equity",
+    horizonDays,
+    entryPrice,
+    predictedPrice,
+    expectedReturn,
+    confidence,
+    signal,
+    tradeGrade: confidence,
+    signalQuality: confidence,
+    regime: expectedReturn > 0 ? "trend" : "meanReversion",
+    ctmu: expectedReturn,
+    psi: confidence,
+    bayes: expectedReturn * confidence,
+    ensemble: expectedReturn,
+    mc: expectedReturn,
+    garchVol: 0,
+    hurst: 0,
+    stopLoss: entryPrice * 0.95,
+    takeProfit: entryPrice * 1.05,
+    kellyPct: Math.max(0, Math.min(1, expectedReturn * confidence)),
+    rationale: "Model-based forecast",
+    resolved: false,
+    horizonEndDate: new Date(Date.now() + horizonDays * 86400000).toISOString(),
+    createdAt: new Date().toISOString()
+  };
 }
