@@ -1,44 +1,55 @@
-import { X_BEARER_TOKEN } from "../config.ts";
-import { clamp } from "../stats.ts";
+const BASE = "https://api.x.com/2/tweets/search/recent";
 
-const POS = ["bullish", "buy", "moon", "rocket", "calls", "long", "breakout", "strong"];
-const NEG = ["bearish", "sell", "puts", "crash", "dump", "short", "weak", "overvalued"];
-
-export async function fetchXPosts(ticker: string, limit = 20) {
-  if (!X_BEARER_TOKEN) return [];
-
+async function fetchJSON(url: string): Promise<any> {
   try {
-    const query = encodeURIComponent(`$${ticker} OR ${ticker} stock lang:en -is:retweet`);
-    const url = `https://api.twitter.com/2/tweets/search/recent?query=${query}&max_results=${Math.min(limit, 100)}&tweet.fields=created_at,public_metrics`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${X_BEARER_TOKEN}` },
-    });
-    if (!res.ok) return [];
-    const j = await res.json();
-    return (j.data || []).map((t: any) => ({
-      title: t.text?.slice(0, 120) || "",
-      summary: t.text || "",
-    }));
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return await res.json();
   } catch {
-    return [];
+    return null;
   }
 }
 
-export function scoreXSentiment(posts: { title?: string; summary?: string }[]) {
-  let polarity = 0, intensity = 0;
-  for (const p of posts || []) {
-    const text = ((p.title || "") + " " + (p.summary || "")).toLowerCase();
-    let s = 0;
-    for (const w of POS) if (text.includes(w)) s += 1;
-    for (const w of NEG) if (text.includes(w)) s -= 1;
-    s = clamp(s, -2, 2);
-    polarity += s;
-    intensity += Math.abs(s);
+export async function fetchXPosts(ticker: string): Promise<any[]> {
+  const query = encodeURIComponent(`$${ticker} OR ${ticker}`);
+  const url = `${BASE}?query=${query}&max_results=20`;
+
+  const data = await fetchJSON(url);
+  if (!data || !Array.isArray(data.data)) return [];
+
+  return data.data.map((post: any) => ({
+    id: post.id ?? "",
+    text: post.text ?? "",
+    createdAt: post.created_at ?? "",
+    authorId: post.author_id ?? ""
+  }));
+}
+
+export async function fetchXSentiment(ticker: string): Promise<{
+  score: number;
+  magnitude: number;
+}> {
+  const posts = await fetchXPosts(ticker);
+  if (posts.length === 0) {
+    return { score: 0, magnitude: 0 };
   }
-  const len = posts?.length || 0;
+
+  let score = 0;
+  let magnitude = 0;
+
+  for (const p of posts) {
+    const t = (p.text || "").toLowerCase();
+
+    if (t.includes("bullish") || t.includes("buy")) score += 1;
+    if (t.includes("bearish") || t.includes("sell")) score -= 1;
+
+    magnitude += 1;
+  }
+
+  const finalScore = magnitude > 0 ? score / magnitude : 0;
+
   return {
-    S: clamp(len ? polarity / (len * 2) : 0, -1, 1),
-    E: clamp(len ? intensity / (len * 2) : 0, 0, 1),
-    count: len,
+    score: finalScore,
+    magnitude
   };
 }
