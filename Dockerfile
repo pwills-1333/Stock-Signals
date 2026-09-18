@@ -4,6 +4,7 @@ WORKDIR /app
 
 # Copy everything first
 COPY . .
+COPY artifacts/ /app/artifacts/
 
 # Cache (with fallback so the build doesn't fail)
 RUN deno cache src/main.ts || true
