@@ -13,7 +13,7 @@ export const GOOGLE_CSE_KEY = Deno.env.get("GOOGLE_CSE_KEY");
 export const GOOGLE_CSE_CX = Deno.env.get("GOOGLE_CSE_CX");
 export const X_BEARER_TOKEN = Deno.env.get("X_BEARER_TOKEN");
 export const ARTIFACTS_PATH =
-  Deno.env.get("ARTIFACTS_PATH") || "../artifacts/heads_v1.json";
+  Deno.env.get("ARTIFACTS_PATH") || "./artifacts/heads_v1.json";
 export const DEFAULT_SETTINGS = Deno.env.get("DEFAULT_SETTINGS");
 export const DEFAULT_WEIGHTS = Deno.env.get("DEFAULT_WEIGHTS");
 export const STORE_PATH = Deno.env.get("STORE_PATH");
