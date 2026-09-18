@@ -233,9 +233,22 @@ export async function runAdvancedPipeline(
   );
   prediction.sourcesUsed = sources;
 
-  if (opts.persist !== false) {
-    const saved = await savePrediction(prediction);
-    return { prediction: saved, snapshot };
+  import { trainedHeads } from "./trainedModels.ts";  // ← add at top of file if missing
+
+if (opts.persist !== false) {
+  const saved = await savePrediction(prediction);
+  return { 
+    prediction: saved, 
+    snapshot,
+    markov: modelArtifacts.markov   // ← ADD THIS LINE
+  };
+}
+
+return { 
+  prediction, 
+  snapshot,
+  markov: modelArtifacts.markov     // ← ADD THIS LINE
+};
   }
   return { prediction, snapshot };
 }
