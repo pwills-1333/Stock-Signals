@@ -1,27 +1,10 @@
-// Root directory inside Docker container
-const ROOT = "/app";
+export const PORT = Number(Deno.env.get("PORT") || 8000);
 
-// Unified environment accessor
-const env = (key: string, fallback?: string) =>
-  Deno.env.get(key) ?? fallback;
+export const FINNHUB_API_KEY = Deno.env.get("FINNHUB_API_KEY");
 
-// Exported constants (single source of truth)
-export const PORT = Number(env("PORT", "8000"));
+export const ARTIFACTS_PATH =
+  Deno.env.get("ARTIFACTS_PATH") || "./artifacts/heads_v1.json";
 
-export const FINNHUB_API_KEY = env("FINNHUB_API_KEY", "");
-export const GOOGLE_CSE_KEY = env("GOOGLE_CSE_KEY", "");
-export const GOOGLE_CSE_CX = env("GOOGLE_CSE_CX", "");
-export const X_BEARER_TOKEN = env("X_BEARER_TOKEN", "");
+export const DATA_DIR = Deno.env.get("DATA_DIR") || "./data";
 
-export const ARTIFACTS_PATH = env(
-  "ARTIFACTS_PATH",
-  `${ROOT}/artifacts/heads_v1.json`
-);
-
-export const STORE_PATH = env(
-  "STORE_PATH",
-  `${ROOT}/data/store.json`
-);
-
-export const DEFAULT_SETTINGS = JSON.parse(env("DEFAULT_SETTINGS", "{}"));
-export const DEFAULT_WEIGHTS = JSON.parse(env("DEFAULT_WEIGHTS", "{}"));
+export const MIN_RECORDS_FOR_WEIGHTS = 50;
