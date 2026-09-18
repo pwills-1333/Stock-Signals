@@ -1,28 +1,30 @@
 console.log("App starting...");
-import { PORT } from "./config.ts";
+
+import { PORT, ARTIFACTS_PATH } from "./config.ts";
 import { handleRequest } from "./routes.ts";
 import { loadModelArtifacts } from "./trainedModels.ts";
 
 await loadModelArtifacts();
+console.log(`Loaded model artifacts from ${ARTIFACTS_PATH}`);
 
-const port = Number(Deno.env.get("PORT") ?? PORT);
-console.log(`Stock Signal Engine (Ψ + CTR-A) listening on port ${port}`);
+console.log(`Stock Signal Engine (Ψ + CTR-A) listening on port ${PORT}`);
 
-Deno.serve({ port }, async (req) => {
+Deno.serve({ port: PORT }, async (req) => {
   const url = new URL(req.url);
 
-  // Serve mobile UI
+  // If you keep UI here (for local dev only):
   if (url.pathname === "/" || url.pathname === "/index.html") {
     try {
       const html = await Deno.readTextFile("./public/index.html");
       return new Response(html, {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
-    } catch {
+    } catch (err) {
+      console.error("Failed to load UI:", err);
       return new Response("UI not found", { status: 404 });
     }
   }
 
-  // All other routes go to the API
+  // API routes
   return handleRequest(req);
 });
