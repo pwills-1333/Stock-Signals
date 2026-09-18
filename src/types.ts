@@ -1,14 +1,14 @@
- export type Regime = "trend" | "meanReversion" | "chaos";
+export type Regime = "trend" | "meanReversion" | "chaos";
 
-export type Weights = {
+export interface Weights {
   markov: number;
   arimaLstm: number;
   lstm: number;
   xgb: number;
   rf: number;
-};
+}
 
-export type Settings = {
+export interface Settings {
   minReturn: number;
   minTelic: number;
   minHology: number;
@@ -18,20 +18,18 @@ export type Settings = {
   maxDrawdownPct: number;
   capital: number;
   mcPaths: number;
-  minCoherenceR: number;
-  minGI: number;
-};
+}
 
-export type OHLC = {
+export interface OHLC {
   t: number[];
   o: number[];
   h: number[];
   l: number[];
   c: number[];
   v: number[];
-};
+}
 
-export type Prediction = {
+export interface Prediction {
   id?: string;
   ticker: string;
   assetType: string;
@@ -41,60 +39,50 @@ export type Prediction = {
   expectedReturn: number;
   confidence: number;
   signal: string;
-  tradeGrade: string;
+  tradeGrade: number;
   signalQuality: number;
   regime: Regime;
-  ctmu: {
-    telic: number;
-    hology: number;
-    dissonance: number;
-    mode: string;
-    R: number;
-    GI: number;
-    RC: number;
-    meaningScore: number;
-  };
-  psi: {
-    s: number;
-    e: number;
-    c: number;
-    m: number;
-    t: number;
-    scalar: number;
-    total: number;
-  };
-  bayes: { prior: number; likelihood: number; posterior: number };
-  ensemble: Record<string, unknown>;
-  mc: { mean: number; p5: number; p95: number };
+
+  ctmu: number;
+  psi: number;
+  bayes: number;
+  ensemble: number;
+  mc: number;
   garchVol: number;
   hurst: number;
+
   stopLoss: number;
   takeProfit: number;
+
   kellyPct: number;
   rationale: string;
+
   resolved: boolean;
   actualPrice?: number;
   errorPct?: number;
+
   horizonEndDate: string;
   createdAt: string;
-  sourcesUsed?: string[];
-};
+}
 
-export type AccuracyRecord = {
+export interface AccuracyRecord {
   id?: string;
   ticker: string;
   predictionId: string;
   horizonDays: number;
+
   entryPrice: number;
   predictedPrice: number;
   expectedReturn: number;
   confidence: number;
   signal: string;
-  tradeGrade: string;
+  tradeGrade: number;
   signalQuality: number;
-  regime: string;
+  regime: Regime;
+
   actualPrice: number;
   errorPct: number;
   hit: boolean;
+
   createdAt: string;
-};
+}
