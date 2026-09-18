@@ -1,132 +1,77 @@
-import { mean, stddev } from "./stats.ts";
 import { OHLC } from "./types.ts";
+import {
+  sma,
+  logReturns,
+  autocorrelation,
+  std,
+  rsi,
+  macd,
+  atr,
+  bollingerWidth,
+  clamp
+} from "./stats.ts";
 
-export function buildFeatures(ohlc: OHLC[]): number[] {
-  if (!Array.isArray(ohlc) || ohlc.length < 2) {
-    return Array(20).fill(0);
-  }
+export function buildFeatures(ohlc: OHLC): number[] {
+  const { c, h, l } = ohlc;
 
-  const closes = ohlc.map((x) => x.c).filter(Number.isFinite);
-  const volumes = ohlc.map((x) => x.v).filter(Number.isFinite);
-
+  const closes = c;
   const n = closes.length;
-  if (n < 2) return Array(20).fill(0);
 
-  const returns: number[] = [];
-  for (let i = 1; i < n; i++) {
-    const prev = closes[i - 1];
-    const curr = closes[i];
-    if (prev > 0 && Number.isFinite(curr)) {
-      returns.push((curr - prev) / prev);
-    }
-  }
+  const safe = (x: number) => (Number.isFinite(x) ? x : 0);
 
-  const last = closes[n - 1];
-  const first = closes[0];
+  const rets = logReturns(closes);
+  const vol20 = std(rets.slice(-20));
+  const vol50 = std(rets.slice(-50));
 
-  const momentum = last - first;
-  const volumeTrend = volumes[n - 1] - volumes[0];
+  const rsi14 = rsi(closes, 14);
+  const macdObj = macd(closes);
 
-  const ret1 = returns[n - 2] ?? 0;
-  const ret5 = returns[n - 6] ?? 0;
-  const ret10 = returns[n - 11] ?? 0;
-  const ret20 = returns[n - 21] ?? 0;
+  const ac1 = autocorrelation(rets, 1);
+  const ac5 = autocorrelation(rets, 5);
 
-  const vol20Slice = returns.slice(-20);
-  const vol20 =
-    vol20Slice.length >= 5 ? stddev(vol20Slice) : stddev(returns);
+  const atr14 = atr(h, l, c, 14);
+  const bbWidth20 = bollingerWidth(closes, 20);
 
-  const returnMean = mean(returns);
-  const returnStd = stddev(returns);
+  const mom5 =
+    n > 5 && closes[n - 6] > 0
+      ? (closes[n - 1] - closes[n - 6]) / closes[n - 6]
+      : 0;
 
-  const norm = (x: number) => (Number.isFinite(x) ? x : 0);
+  const mom10 =
+    n > 10 && closes[n - 11] > 0
+      ? (closes[n - 1] - closes[n - 11]) / closes[n - 11]
+      : 0;
 
-  return [
-    norm(momentum / Math.max(first, 1)),
-    norm(volumeTrend / Math.max(volumes[0], 1)),
-    norm(returnMean),
-    norm(returnStd),
-    norm(vol20),
-    norm(ret1),
-    norm(ret5),
-    norm(ret10),
-    norm(ret20),
-    norm(last),
-    norm(first),
-    norm(last / Math.max(first, 1)),
-    norm(closes[n - 1] - closes[n - 2] || 0),
-    norm(closes[n - 1] / Math.max(closes[n - 2], 1)),
-    norm(volumes[n - 1] / Math.max(volumes[n - 2], 1)),
-    norm(returns.length),
-    norm(mean(volumes)),
-    norm(stddev(volumes)),
-    norm(closes[n - 1]),
-    norm(volumes[n - 1])
+  const mom20 =
+    n > 20 && closes[n - 21] > 0
+      ? (closes[n - 1] - closes[n - 21]) / closes[n - 21]
+      : 0;
+
+  const volRatio =
+    vol50 > 0 ? clamp(vol20 / vol50, 0, 5) : 1;
+
+  const features = [
+    safe(rsi14 / 100),
+    safe(macdObj.hist),
+    safe(sma(closes, 20) - sma(closes, 50)),
+    safe(sma(closes, 50) - sma(closes, 200)),
+    safe(mom5),
+    safe(mom10),
+    safe(mom20),
+    safe(vol20),
+    safe(volRatio),
+    safe(ac1),
+    safe(ac5),
+    safe(atr14),
+    safe(bbWidth20),
+    safe(std(rets)),
+    safe(rets.slice(-1)[0] ?? 0),
+    safe(rets.slice(-5).reduce((a, b) => a + b, 0)),
+    safe(rets.slice(-10).reduce((a, b) => a + b, 0)),
+    safe(closes[n - 1] - closes[Math.max(0, n - 2)]),
+    safe(closes[n - 1] - closes[Math.max(0, n - 6)]),
+    safe(closes[n - 1] - closes[Math.max(0, n - 11)])
   ];
-}
-import { mean, stddev } from "./stats.ts";
-import { OHLC } from "./types.ts";
 
-export function buildFeatures(ohlc: OHLC[]): number[] {
-  if (!Array.isArray(ohlc) || ohlc.length < 2) {
-    return Array(20).fill(0);
-  }
-
-  const closes = ohlc.map((x) => x.c).filter(Number.isFinite);
-  const volumes = ohlc.map((x) => x.v).filter(Number.isFinite);
-
-  const n = closes.length;
-  if (n < 2) return Array(20).fill(0);
-
-  const returns: number[] = [];
-  for (let i = 1; i < n; i++) {
-    const prev = closes[i - 1];
-    const curr = closes[i];
-    if (prev > 0 && Number.isFinite(curr)) {
-      returns.push((curr - prev) / prev);
-    }
-  }
-
-  const last = closes[n - 1];
-  const first = closes[0];
-
-  const momentum = last - first;
-  const volumeTrend = volumes[n - 1] - volumes[0];
-
-  const ret1 = returns[n - 2] ?? 0;
-  const ret5 = returns[n - 6] ?? 0;
-  const ret10 = returns[n - 11] ?? 0;
-  const ret20 = returns[n - 21] ?? 0;
-
-  const vol20Slice = returns.slice(-20);
-  const vol20 =
-    vol20Slice.length >= 5 ? stddev(vol20Slice) : stddev(returns);
-
-  const returnMean = mean(returns);
-  const returnStd = stddev(returns);
-
-  const norm = (x: number) => (Number.isFinite(x) ? x : 0);
-
-  return [
-    norm(momentum / Math.max(first, 1)),
-    norm(volumeTrend / Math.max(volumes[0], 1)),
-    norm(returnMean),
-    norm(returnStd),
-    norm(vol20),
-    norm(ret1),
-    norm(ret5),
-    norm(ret10),
-    norm(ret20),
-    norm(last),
-    norm(first),
-    norm(last / Math.max(first, 1)),
-    norm(closes[n - 1] - closes[n - 2] || 0),
-    norm(closes[n - 1] / Math.max(closes[n - 2], 1)),
-    norm(volumes[n - 1] / Math.max(volumes[n - 2], 1)),
-    norm(returns.length),
-    norm(mean(volumes)),
-    norm(stddev(volumes)),
-    norm(closes[n - 1]),
-    norm(volumes[n - 1])
-  ];
+  return features.map((x) => (Number.isFinite(x) ? x : 0));
 }
