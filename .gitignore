@@ -1,4 +1,4 @@
 .env
 data/
-artifacts/*.json
+# artifacts/*.json   ← comment it out
 !artifacts/.gitkeep
