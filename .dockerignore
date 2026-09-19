@@ -1,0 +1,9 @@
+.git
+.gitignore
+API:http/
+node_modules/
+public/
+artifacts/
+railway.toml
+README.md
+Dockerfile
