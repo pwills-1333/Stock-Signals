@@ -1,14 +1,11 @@
 import { loadAllArtifacts } from "./artifacts/multiArtifacts.ts";
 
-// We no longer use ARTIFACTS_PATH or single-file loading.
-// This cached object will store ALL heads from ALL JSON files.
 let cached: any = null;
 
 /**
  * Load ALL model artifacts from /src/artifacts
- * This replaces loadModelArtifacts()
  */
-export async function loadModelArtifacts() {
+export async function getArtifacts() {
   if (cached) return cached;
 
   try {
@@ -21,19 +18,15 @@ export async function loadModelArtifacts() {
     }
 
     cached = artifact;
-    console.log("Loaded ALL trained heads from /src/artifacts");
     return cached;
 
   } catch (err) {
-    console.log("Failed to load multi-artifacts:", err);
+    console.error("Failed to load multi-artifacts:", err);
     cached = null;
     return null;
   }
 }
 
-/**
- * Predict using a single head
- */
 export function predictWithArtifact(head: any, features: number[]): number {
   if (!head || !Array.isArray(head.coef) || !Number.isFinite(head.intercept)) {
     return 0;
@@ -53,9 +46,6 @@ export function predictWithArtifact(head: any, features: number[]): number {
   return Number.isFinite(y) ? y : 0;
 }
 
-/**
- * Run ALL heads (from ALL JSON files)
- */
 export function runAllHeads(artifact: any, features: number[]) {
   if (!artifact || !Array.isArray(artifact.heads)) return [];
 
@@ -72,9 +62,6 @@ export function runAllHeads(artifact: any, features: number[]) {
   return results;
 }
 
-/**
- * Aggregate all head outputs into a single signal
- */
 export function aggregateHeads(results: any[]) {
   if (!Array.isArray(results) || results.length === 0) {
     return {
