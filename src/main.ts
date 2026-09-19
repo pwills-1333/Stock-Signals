@@ -1,14 +1,15 @@
-import { router } from "./routes.ts";
+FROM denoland/deno:2.1.4
 
-const PORT = Number(Deno.env.get("PORT") ?? 8000);
+WORKDIR /app
 
-Deno.serve(
-  {
-    port: PORT,
-    hostname: "0.0.0.0",
-    onListen: () => {
-      console.log(`Stock-Signals API running on http://0.0.0.0:${PORT}`);
-    }
-  },
-  router
-);
+COPY src/ /app/src/
+COPY public/ /app/public/
+COPY artifacts/ /app/artifacts/
+
+RUN deno cache src/main.ts || true
+
+HEALTHCHECK CMD ["deno", "eval", "try{const r=await fetch('http://localhost:8000/health');Deno.exit(r.ok?0:1);}catch{Deno.exit(1);}"]
+
+EXPOSE 8000
+
+CMD ["deno", "run", "-A", "src/main.ts"]
