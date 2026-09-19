@@ -1,4 +1,4 @@
-import routes from "./routes.ts";
+import { router } from "./routes.ts";
 
 const PORT = 8000;
 
@@ -9,5 +9,5 @@ Deno.serve(
       console.log(`Stock-Signals API running on http://localhost:${PORT}`);
     }
   },
-  routes.fetch
+  router
 );
