@@ -4,7 +4,6 @@ import { buildFeatures } from "./mlFeatures.ts";
 import { fetchOHLC } from "./data.ts";
 import { loadAllArtifacts } from "./artifacts/multiArtifacts.ts";
 
-// NEW imports for regime weighting
 import {
   detectRegime,
   weightHeadsByRegime,
@@ -30,7 +29,7 @@ export async function predict(input: {
       signal: "neutral",
       tradeGrade: 0,
       signalQuality: 0,
-      regime: "trend",
+      regime: "neutral",
       ctmu: 0,
       psi: 0,
       bayes: 0,
@@ -50,7 +49,6 @@ export async function predict(input: {
 
   const features = buildFeatures(ohlc);
 
-  // Load ALL JSON artifacts (v1, v2, v3, v4, etc.)
   const artifact = await loadAllArtifacts("src/artifacts");
 
   let expectedReturn = 0;
@@ -59,30 +57,25 @@ export async function predict(input: {
   let regime = "neutral";
 
   if (artifact) {
-    // Step 1: Run all heads
     const headOutputs = runAllHeads(artifact, features);
 
-    // Step 2: Detect regime using raw outputs
     const rawAgg = aggregateHeads(headOutputs);
 
     const regimeInputs = {
       expectedReturn: rawAgg.expectedReturn,
       confidence: rawAgg.confidence,
-      hurst: 0,        // placeholder until hurst added
-      volatility: 0,   // placeholder until volatility added
-      chaos: 0,        // placeholder until chaos head added
-      ctrA: rawAgg.expectedReturn // temporary proxy
+      hurst: 0,
+      volatility: 0,
+      chaos: 0,
+      ctrA: rawAgg.expectedReturn
     };
 
     regime = detectRegime(regimeInputs);
 
-    // Step 3: Weight heads based on regime
     const weights = weightHeadsByRegime(regime, artifact.heads);
 
-    // Step 4: Apply weights to head outputs
     const weightedOutputs = applyHeadWeights(headOutputs, weights);
 
-    // Step 5: Aggregate weighted outputs
     const agg = aggregateHeads(weightedOutputs);
 
     expectedReturn = agg.expectedReturn;
@@ -115,7 +108,7 @@ export async function predict(input: {
     stopLoss: entryPrice * 0.95,
     takeProfit: entryPrice * 1.05,
     kellyPct: Math.max(0, Math.min(1, expectedReturn * confidence)),
-    rationale: "Regime‑weighted model forecast",
+    rationale: "Regime-weighted model forecast",
     resolved: false,
     horizonEndDate: new Date(Date.now() + horizonDays * 86400000).toISOString(),
     createdAt: new Date().toISOString()
