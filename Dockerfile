@@ -6,9 +6,6 @@ COPY src/ /app/src/
 COPY public/ /app/public/
 COPY artifacts/ /app/artifacts/
 
-COPY artifacts/ /app/artifacts/
-COPY public/ /app/public/
-
 RUN deno cache src/main.ts || true
 
 HEALTHCHECK CMD deno eval "try{const r=await fetch('http://localhost:8000/health');Deno.exit(r.ok?0:1);}catch{Deno.exit(1);}"
