@@ -1,15 +1,15 @@
-import { loadAllArtifacts } from "./artifacts/multiArtifacts.ts";
+import { loadAllArtifacts } from "../artifacts/multiArtifacts.ts";
 
 let cached: any = null;
 
 /**
- * Load ALL model artifacts from /src/artifacts
+ * Load ALL model artifacts from /artifacts
  */
 export async function getArtifacts() {
   if (cached) return cached;
 
   try {
-    const artifact = await loadAllArtifacts("src/artifacts");
+    const artifact = await loadAllArtifacts("artifacts");
 
     if (!artifact || !Array.isArray(artifact.heads)) {
       console.error("Invalid multi-artifact format:", artifact);
