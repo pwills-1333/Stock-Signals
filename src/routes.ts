@@ -21,6 +21,11 @@ export async function router(request: Request): Promise<Response> {
       return json({ status: "ok" });
     }
 
+    // Root endpoint
+if (method === "GET" && path === "/") {
+  return json({ status: "ok", service: "Stock-Signals API" });
+}
+
     // Predict
     if (method === "POST" && path === "/predict") {
       const body = await request.json();
