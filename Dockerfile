@@ -2,7 +2,9 @@ FROM denoland/deno:2.1.4
 
 WORKDIR /app
 
-COPY . .
+COPY src/ /app/src/
+COPY public/ /app/public/
+COPY artifacts/ /app/artifacts/
 
 COPY artifacts/ /app/artifacts/
 COPY public/ /app/public/
