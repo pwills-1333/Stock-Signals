@@ -26,6 +26,10 @@ export function listAccuracy() {
   return accuracy;
 }
 
+export function getOutcomes() {
+  return accuracy;
+}
+
 export function resolvePrediction(id: string, actualPrice: number) {
   const p = predictions.find((x) => x.id === id);
   if (!p) return null;
