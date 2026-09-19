@@ -10,8 +10,9 @@ async function loadJSON(path: string): Promise<any | null> {
   }
 }
 
-export async function loadAllArtifacts(dir = "artifacts"): Promise<ModelArtifact> {
-  const entries = [];
+export async function loadAllArtifacts(dir = "src/artifacts"): Promise<ModelArtifact> {
+  const entries: string[] = [];
+
   for await (const file of Deno.readDir(dir)) {
     if (file.isFile && file.name.endsWith(".json")) {
       entries.push(join(dir, file.name));
@@ -31,9 +32,9 @@ export async function loadAllArtifacts(dir = "artifacts"): Promise<ModelArtifact
 
     for (const head of data.heads) {
       allHeads.push({
-        name: `${head.name}`,
-        coef: head.coef,
-        intercept: head.intercept
+        name: head.name ?? "unnamed",
+        coef: Array.isArray(head.coef) ? head.coef : [],
+        intercept: Number.isFinite(head.intercept) ? head.intercept : 0
       });
     }
   }
