@@ -1,4 +1,4 @@
-import { ModelArtifact, ModelHead } from "../types.ts";
+import { ModelArtifact, ModelHead } from "../src/types.ts";
 import { join } from "https://deno.land/std/path/mod.ts";
 
 async function loadJSON(path: string): Promise<any | null> {
@@ -10,7 +10,7 @@ async function loadJSON(path: string): Promise<any | null> {
   }
 }
 
-export async function loadAllArtifacts(dir = "src/artifacts"): Promise<ModelArtifact> {
+export async function loadAllArtifacts(dir = "artifacts"): Promise<ModelArtifact> {
   const entries: string[] = [];
 
   for await (const file of Deno.readDir(dir)) {
