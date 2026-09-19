@@ -49,7 +49,7 @@ export async function predict(input: {
 
   const features = buildFeatures(ohlc);
 
-  const artifact = await loadAllArtifacts("src/artifacts");
+  const artifact = await loadAllArtifacts("artifacts");  // FIXED DIRECTORY
 
   let expectedReturn = 0;
   let confidence = 0;
