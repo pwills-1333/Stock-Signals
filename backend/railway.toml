@@ -1,7 +1,7 @@
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
-include = ["src", "artifacts"]
+include = ["src", "artifacts", "force_rebuild.txt"]
 
 [deploy]
 healthcheckPath = "/health"
