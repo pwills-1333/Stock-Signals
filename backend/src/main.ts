@@ -12,7 +12,7 @@ router.get("/health", (ctx) => {
 
 router.post("/predict", async (ctx) => {
   try {
-    const body = await ctx.request.body({ type: "json" }).value;
+    const body = await ctx.request.body.json();
     const { ticker, horizonDays } = body;
 
     if (!ticker) {
