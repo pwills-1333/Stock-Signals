@@ -1,7 +1,7 @@
 import { Application, Router } from "https://deno.land/x/oak/mod.ts";
 import { oakCors } from "https://deno.land/x/cors/mod.ts";
 
-import { runPrediction } from "./pipeline.ts";
+import { predict } from "./pipeline.ts";
 
 const app = new Application();
 const router = new Router();
@@ -23,7 +23,7 @@ router.post("/predict", async (ctx) => {
       return;
     }
 
-    const result = await runPrediction(ticker, horizonDays ?? 14);
+    const result = await predict({ ticker, horizonDays: horizonDays ?? 14 });
     ctx.response.body = result;
 
   } catch (err) {
