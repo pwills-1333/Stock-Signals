@@ -1,15 +1,54 @@
-FROM denoland/deno:2.1.4
+import { Application, Router } from "https://deno.land/x/oak/mod.ts";
+import { oakCors } from "https://deno.land/x/cors/mod.ts";
 
-WORKDIR /app
+import { loadModelArtifacts } from "./trainedModels.ts";
+import { runPrediction } from "./pipeline.ts";
 
-COPY src/ /app/src/
-COPY public/ /app/public/
-COPY artifacts/ /app/artifacts/
+await loadModelArtifacts();
 
-RUN deno cache src/main.ts || true
+const app = new Application();
+const router = new Router();
 
-HEALTHCHECK CMD ["deno", "eval", "try{const r=await fetch('http://localhost:8000/health');Deno.exit(r.ok?0:1);}catch{Deno.exit(1);}"]
+// Healthcheck
+router.get("/health", (ctx) => {
+  ctx.response.body = { ok: true };
+});
 
-EXPOSE 8000
+// Prediction endpoint
+router.post("/predict", async (ctx) => {
+  try {
+    const body = await ctx.request.body({ type: "json" }).value;
+    const { ticker, horizonDays } = body;
 
-CMD ["deno", "run", "-A", "src/main.ts"]
+    if (!ticker) {
+      ctx.response.status = 400;
+      ctx.response.body = { error: "Ticker is required" };
+      return;
+    }
+
+    const result = await runPrediction(ticker, horizonDays ?? 14);
+    ctx.response.body = result;
+
+  } catch (err) {
+    console.error("Prediction error:", err);
+    ctx.response.status = 500;
+    ctx.response.body = { error: "Internal server error" };
+  }
+});
+
+// CORS + OPTIONS handling
+app.use(
+  oakCors({
+    origin: "*",
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type"],
+  })
+);
+
+app.use(router.routes());
+app.use(router.allowedMethods());
+
+const port = Number(Deno.env.get("PORT") ?? 8000);
+console.log(`Stock-Signals API running on http://0.0.0.0:${port}`);
+
+await app.listen({ port });
