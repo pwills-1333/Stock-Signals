@@ -6,12 +6,10 @@ import { predict } from "./pipeline.ts";
 const app = new Application();
 const router = new Router();
 
-// Healthcheck
 router.get("/health", (ctx) => {
   ctx.response.body = { ok: true };
 });
 
-// Prediction endpoint
 router.post("/predict", async (ctx) => {
   try {
     const body = await ctx.request.body({ type: "json" }).value;
@@ -33,7 +31,6 @@ router.post("/predict", async (ctx) => {
   }
 });
 
-// CORS + OPTIONS handling
 app.use(
   oakCors({
     origin: "*",
