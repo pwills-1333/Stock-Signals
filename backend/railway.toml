@@ -1,10 +1,10 @@
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
-include = ["src", "public", "artifacts", "data"]
+include = ["src", "artifacts"]
 
 [deploy]
-startCommand = "deno run -A --env src/main.ts"
+startCommand = "deno run -A src/main.ts"
 healthcheckPath = "/health"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
