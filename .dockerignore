@@ -1,6 +1,0 @@
-.git
-.gitignore
-API:http/
-node_modules/
-railway.toml
-README.md
