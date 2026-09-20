@@ -1,10 +1,7 @@
 import { Application, Router } from "https://deno.land/x/oak/mod.ts";
 import { oakCors } from "https://deno.land/x/cors/mod.ts";
 
-import { loadModelArtifacts } from "./trainedModels.ts";
 import { runPrediction } from "./pipeline.ts";
-
-await loadModelArtifacts();
 
 const app = new Application();
 const router = new Router();
