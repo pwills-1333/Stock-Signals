@@ -1,4 +1,28 @@
+# Environment
 .env
+.env.local
+.env.*.local
+
+# Data & caches
 data/
-# artifacts/*.json   ← comment it out
-!artifacts/.gitkeep
+*.log
+
+# Deno
+.deno/
+deno.lock
+
+# Node (frontend)
+node_modules/
+frontend/node_modules/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Build / temp
+dist/
+build/
+tmp/
