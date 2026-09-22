@@ -1,9 +1,8 @@
 [build]
-builder = "DOCKERFILE"
+builder = "dockerfile"
 dockerfilePath = "Dockerfile"
-include = ["src", "artifacts", "force_rebuild.txt"]
 
 [deploy]
 healthcheckPath = "/health"
 healthcheckTimeout = 30
-restartPolicyType = "ON_FAILURE"
+restartPolicyType = "on_failure"
