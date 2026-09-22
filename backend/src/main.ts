@@ -1,48 +1,110 @@
-import { Application, Router } from "https://deno.land/x/oak/mod.ts";
-import { oakCors } from "https://deno.land/x/cors/mod.ts";
+// backend/src/regimeSelector.ts
+import type { Regime } from "./types.ts";
 
-import { predict } from "./pipeline.ts";
+export interface RegimeInputs {
+  expectedReturn: number;
+  confidence: number;
+  hurst: number;
+  volatility: number;
+  chaos: number;
+  ctrA: number;
+}
 
-const app = new Application();
-const router = new Router();
+export interface HeadWeight {
+  name: string;
+  weight: number;
+}
 
-router.get("/health", (ctx) => {
-  ctx.response.body = { ok: true };
-});
+/**
+ * Determine the dominant market regime
+ */
+export function detectRegime(inputs: RegimeInputs): Regime {
+  const { expectedReturn, hurst, volatility, chaos, ctrA } = inputs;
 
-router.post("/predict", async (ctx) => {
-  try {
-    const body = await ctx.request.body.json();
-    const { ticker, horizonDays } = body;
+  if (chaos > 0.45) return "chaos";
+  if (volatility > 0.04) return "volatility"; // ATR/price > 4%
 
-    if (!ticker) {
-      ctx.response.status = 400;
-      ctx.response.body = { error: "Ticker is required" };
-      return;
+  if (hurst > 0.58 && expectedReturn > 0.005) return "trend";
+  if (hurst < 0.42 && Math.abs(expectedReturn) > 0.004) return "meanReversion";
+
+  if (ctrA > 0.18) return "fundamentalBull";
+  if (ctrA < -0.18) return "fundamentalBear";
+
+  return "neutral";
+}
+
+/**
+ * Assign weights to heads based on the detected regime
+ */
+export function weightHeadsByRegime(
+  regime: Regime,
+  heads: { name: string }[],
+): HeadWeight[] {
+  const weights: HeadWeight[] = [];
+
+  for (const head of heads) {
+    let w = 1.0;
+    const name = (head.name || "").toLowerCase();
+
+    switch (regime) {
+      case "trend":
+        if (name.includes("trend")) w = 1.45;
+        else if (name.includes("meanrev")) w = 0.55;
+        else if (name.includes("chaos") || name.includes("vol")) w = 0.75;
+        break;
+
+      case "meanReversion":
+        if (name.includes("meanrev")) w = 1.50;
+        else if (name.includes("trend")) w = 0.50;
+        else if (name.includes("chaos")) w = 0.70;
+        break;
+
+      case "chaos":
+        if (name.includes("chaos")) w = 1.60;
+        else if (name.includes("vol")) w = 1.25;
+        else w = 0.45;
+        break;
+
+      case "volatility":
+        if (name.includes("vol") || name.includes("volatility")) w = 1.45;
+        else if (name.includes("chaos")) w = 1.15;
+        else w = 0.80;
+        break;
+
+      case "fundamentalBull":
+        if (name.includes("trend")) w = 1.30;
+        else if (name.includes("meanrev")) w = 0.70;
+        break;
+
+      case "fundamentalBear":
+        if (name.includes("meanrev")) w = 1.30;
+        else if (name.includes("trend")) w = 0.70;
+        break;
+
+      case "neutral":
+      default:
+        w = 1.0;
+        break;
     }
 
-    const result = await predict({ ticker, horizonDays: horizonDays ?? 14 });
-    ctx.response.body = result;
-
-  } catch (err) {
-    console.error("Prediction error:", err);
-    ctx.response.status = 500;
-    ctx.response.body = { error: "Internal server error" };
+    weights.push({ name: head.name, weight: w });
   }
-});
 
-app.use(
-  oakCors({
-    origin: "*",
-    methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type"],
-  })
-);
+  return weights;
+}
 
-app.use(router.routes());
-app.use(router.allowedMethods());
-
-const port = Number(Deno.env.get("PORT") ?? 8000);
-console.log(`Stock-Signals API running on http://0.0.0.0:${port}`);
-
-await app.listen({ port });
+/**
+ * Apply the regime weights to head outputs
+ */
+export function applyHeadWeights(
+  headOutputs: { name: string; output: number }[],
+  weights: HeadWeight[],
+): { name: string; output: number }[] {
+  return headOutputs.map((head) => {
+    const w = weights.find((x) => x.name === head.name)?.weight ?? 1.0;
+    return {
+      name: head.name,
+      output: head.output * w,
+    };
+  });
+}
