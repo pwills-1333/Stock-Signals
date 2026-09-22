@@ -1,9 +1,10 @@
-import { Prediction, AccuracyRecord } from "./types.ts";
+// backend/src/store.ts
+import type { Prediction, AccuracyRecord } from "./types.ts";
 
 const predictions: Prediction[] = [];
 const accuracy: AccuracyRecord[] = [];
 
-export function savePrediction(p: Prediction) {
+export function savePrediction(p: Prediction): Prediction {
   const id = crypto.randomUUID();
   const createdAt = new Date().toISOString();
 
@@ -11,33 +12,36 @@ export function savePrediction(p: Prediction) {
     ...p,
     id,
     createdAt,
-    resolved: false
+    resolved: false,
   };
 
   predictions.push(stored);
   return stored;
 }
 
-export function listPredictions() {
-  return predictions;
+export function listPredictions(): Prediction[] {
+  return [...predictions];
 }
 
-export function listAccuracy() {
-  return accuracy;
+export function listAccuracy(): AccuracyRecord[] {
+  return [...accuracy];
 }
 
-export function getOutcomes() {
-  return accuracy;
+export function getOutcomes(): AccuracyRecord[] {
+  return [...accuracy];
 }
 
-export function resolvePrediction(id: string, actualPrice: number) {
+export function resolvePrediction(
+  id: string,
+  actualPrice: number,
+): AccuracyRecord | null {
   const p = predictions.find((x) => x.id === id);
   if (!p) return null;
 
   p.resolved = true;
   p.actualPrice = actualPrice;
 
-  if (Number.isFinite(actualPrice) && actualPrice > 0) {
+  if (Number.isFinite(actualPrice) && actualPrice > 0 && p.predictedPrice > 0) {
     p.errorPct = (p.predictedPrice - actualPrice) / actualPrice;
   } else {
     p.errorPct = 0;
@@ -61,7 +65,7 @@ export function resolvePrediction(id: string, actualPrice: number) {
     actualPrice,
     errorPct: p.errorPct ?? 0,
     hit,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
   };
 
   accuracy.push(rec);
@@ -69,12 +73,18 @@ export function resolvePrediction(id: string, actualPrice: number) {
 }
 
 export function resolveAll() {
+  const count = accuracy.length;
+  const avgError =
+    count === 0
+      ? 0
+      : accuracy.reduce((a, r) => a + Math.abs(r.errorPct), 0) / count;
+
+  const hitRate =
+    count === 0 ? 0 : accuracy.filter((r) => r.hit).length / count;
+
   return {
-    count: accuracy.length,
-    avgError:
-      accuracy.length === 0
-        ? 0
-        : accuracy.reduce((a, r) => a + Math.abs(r.errorPct), 0) /
-          accuracy.length
+    count,
+    avgError,
+    hitRate,
   };
 }
