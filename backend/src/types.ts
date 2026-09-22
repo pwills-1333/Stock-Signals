@@ -1,4 +1,25 @@
-export type Regime = "trend" | "meanReversion" | "chaos";
+// backend/src/types.ts
+
+export type Regime =
+  | "trend"
+  | "meanReversion"
+  | "chaos"
+  | "volatility"
+  | "fundamentalBull"
+  | "fundamentalBear"
+  | "neutral";
+
+export interface ModelHead {
+  name: string;
+  coef: number[];
+  intercept: number;
+}
+
+export interface ModelArtifact {
+  version: string;
+  feature_count: number;
+  heads: ModelHead[];
+}
 
 export interface Weights {
   markov: number;
