@@ -1,19 +1,33 @@
-// src/data.ts
+// backend/src/data.ts
 import type { OHLC } from "./types.ts";
-import { fetchYahooOHLC } from "./data/yahoo.ts";
 import { fetchFinnhubOHLC } from "./data/finnhub.ts";
+import { fetchYahooOHLC } from "./data/yahoo.ts";
 
+/**
+ * Primary: Finnhub
+ * Fallback: Yahoo Finance
+ */
 export async function fetchOHLC(ticker: string): Promise<OHLC | null> {
-  // Try Yahoo first
-  const yahoo = await fetchYahooOHLC(ticker);
-  if (yahoo && yahoo.c.length > 0) {
-    return yahoo;
+  const symbol = ticker.toUpperCase().trim();
+
+  // 1. Try Finnhub first
+  try {
+    const finnhub = await fetchFinnhubOHLC(symbol);
+    if (finnhub && finnhub.c.length >= 30) {
+      return finnhub;
+    }
+  } catch (err) {
+    console.warn("Finnhub failed:", err);
   }
 
-  // Fallback to Finnhub
-  const finnhub = await fetchFinnhubOHLC(ticker);
-  if (finnhub && finnhub.c.length > 0) {
-    return finnhub;
+  // 2. Fallback to Yahoo
+  try {
+    const yahoo = await fetchYahooOHLC(symbol);
+    if (yahoo && yahoo.c.length >= 30) {
+      return yahoo;
+    }
+  } catch (err) {
+    console.warn("Yahoo failed:", err);
   }
 
   return null;
