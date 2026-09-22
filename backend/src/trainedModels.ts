@@ -1,40 +1,17 @@
-import { loadAllArtifacts } from "../artifacts/multiArtifacts.ts";
-
-let cached: any = null;
+// backend/src/trainedModels.ts
+import type { ModelArtifact, ModelHead } from "./types.ts";
 
 /**
- * Load ALL model artifacts from /artifacts
+ * Run a single Ridge head
  */
-export async function getArtifacts() {
-  if (cached) return cached;
-
-  try {
-    const artifact = await loadAllArtifacts("artifacts");
-
-    if (!artifact || !Array.isArray(artifact.heads)) {
-      console.error("Invalid multi-artifact format:", artifact);
-      cached = null;
-      return null;
-    }
-
-    cached = artifact;
-    return cached;
-
-  } catch (err) {
-    console.error("Failed to load multi-artifacts:", err);
-    cached = null;
-    return null;
-  }
-}
-
-export function predictWithArtifact(head: any, features: number[]): number {
+export function runRidgeHead(head: ModelHead, features: number[]): number {
   if (!head || !Array.isArray(head.coef) || !Number.isFinite(head.intercept)) {
     return 0;
   }
 
   let y = head.intercept;
-
   const len = Math.min(head.coef.length, features.length);
+
   for (let i = 0; i < len; i++) {
     const c = head.coef[i];
     const f = features[i];
@@ -46,43 +23,52 @@ export function predictWithArtifact(head: any, features: number[]): number {
   return Number.isFinite(y) ? y : 0;
 }
 
-export function runAllHeads(artifact: any, features: number[]) {
+/**
+ * Run every head in the artifact
+ */
+export function runAllHeads(
+  artifact: ModelArtifact,
+  features: number[],
+): { name: string; output: number }[] {
   if (!artifact || !Array.isArray(artifact.heads)) return [];
 
-  const results = [];
-
-  for (const head of artifact.heads) {
-    const output = predictWithArtifact(head, features);
-    results.push({
-      name: head.name ?? "unnamed",
-      output
-    });
-  }
-
-  return results;
+  return artifact.heads.map((head) => ({
+    name: head.name ?? "unnamed",
+    output: runRidgeHead(head, features),
+  }));
 }
 
-export function aggregateHeads(results: any[]) {
+/**
+ * Simple average aggregation + signal generation
+ */
+export function aggregateHeads(
+  results: { name: string; output: number }[],
+): {
+  expectedReturn: number;
+  confidence: number;
+  signal: "buy" | "sell" | "neutral";
+} {
   if (!Array.isArray(results) || results.length === 0) {
     return {
       expectedReturn: 0,
       confidence: 0,
-      signal: "neutral"
+      signal: "neutral",
     };
   }
 
   const avg =
     results.reduce((sum, r) => sum + (r.output ?? 0), 0) / results.length;
 
+  // Confidence is magnitude of the average (capped at 1)
   const confidence = Math.min(Math.abs(avg), 1);
 
-  let signal = "neutral";
-  if (avg > 0.02) signal = "buy";
-  if (avg < -0.02) signal = "sell";
+  let signal: "buy" | "sell" | "neutral" = "neutral";
+  if (avg > 0.015) signal = "buy";
+  if (avg < -0.015) signal = "sell";
 
   return {
     expectedReturn: avg,
     confidence,
-    signal
+    signal,
   };
 }
