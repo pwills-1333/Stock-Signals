@@ -4,181 +4,290 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Stock Signals</title>
-
-  <link rel="stylesheet" href="styles.css" />
-
   <style>
+    :root {
+      --bg: #0f1115;
+      --card: #1a1d23;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --green: #4ade80;
+      --red: #f87171;
+      --blue: #3b82f6;
+      --yellow: #fbbf24;
+    }
+
+    * { box-sizing: border-box; }
+
     body {
-      background: #0f1115;
-      color: #e5e7eb;
-      font-family: system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
       margin: 0;
       padding: 0;
+      line-height: 1.5;
     }
+
     .container {
-      max-width: 900px;
-      margin: auto;
-      padding: 20px;
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 24px 16px;
     }
+
+    h1 {
+      font-size: 1.75rem;
+      margin-bottom: 1.5rem;
+      font-weight: 700;
+    }
+
     .card {
-      background: #1a1d23;
-      border-radius: 10px;
+      background: var(--card);
+      border-radius: 12px;
       padding: 20px;
-      margin-top: 20px;
+      margin-bottom: 20px;
     }
-    .hidden {
-      display: none;
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 0.9rem;
+      color: var(--muted);
     }
-    .positive {
-      color: #4ade80;
+
+    input {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid #374151;
+      background: #111827;
+      color: white;
+      font-size: 1rem;
     }
-    .negative {
-      color: #f87171;
+
+    button {
+      margin-top: 12px;
+      padding: 10px 20px;
+      background: var(--blue);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      cursor: pointer;
+      font-weight: 600;
     }
-    .badge-buy {
-      background: #4ade80;
-      color: #000;
+
+    button:hover { opacity: 0.9; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .status {
+      margin-top: 10px;
+      font-size: 0.875rem;
+      color: var(--muted);
     }
-    .badge-sell {
-      background: #f87171;
-      color: #000;
+
+    .hidden { display: none; }
+
+    .positive { color: var(--green); }
+    .negative { color: var(--red); }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
     }
-    .badge-hold {
-      background: #e5e7eb;
-      color: #000;
+    .badge-buy { background: var(--green); color: #000; }
+    .badge-sell { background: var(--red); color: #000; }
+    .badge-neutral { background: #6b7280; color: #fff; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 12px;
     }
-    .badge-avoid {
-      background: #fbbf24;
-      color: #000;
+
+    .metric-label {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .metric-value {
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+
+    hr {
+      border: none;
+      border-top: 1px solid #374151;
+      margin: 20px 0;
+    }
+
+    .rationale {
+      font-size: 0.9rem;
+      color: var(--muted);
+      white-space: pre-wrap;
     }
   </style>
 </head>
-
 <body>
   <div class="container">
-    <h1 class="text-2xl font-bold mb-4">Stock Signals</h1>
+    <h1>Stock Signals</h1>
 
     <div class="card">
-      <label class="block mb-2">Ticker Symbol</label>
-      <input id="tickerInput" class="w-full p-2 rounded bg-gray-800 text-white" placeholder="AAPL, TSLA, NVDA" />
-      <button onclick="loadTicker()" class="mt-3 px-4 py-2 bg-blue-500 rounded text-white">
-        Analyze
-      </button>
-      <div id="status" class="mt-2 text-sm text-gray-400">● Idle</div>
+      <label for="tickerInput">Ticker Symbol</label>
+      <input id="tickerInput" placeholder="AAPL, TSLA, NVDA, MSFT..." autocomplete="off" />
+      <button id="analyzeBtn" onclick="loadTicker()">Analyze</button>
+      <div id="status" class="status">● Idle</div>
     </div>
 
-    <div id="loading" class="mt-4 text-gray-400 hidden">Loading...</div>
+    <div id="loading" class="card hidden">Loading prediction...</div>
+
+    <div id="errorCard" class="card hidden" style="border: 1px solid var(--red);">
+      <strong>Error</strong>
+      <div id="errorMessage" style="margin-top: 8px;"></div>
+    </div>
 
     <div id="predictionCard" class="card hidden">
-      <h2 id="tickerName" class="text-xl font-semibold mb-2"></h2>
+      <h2 id="tickerName" style="margin-top: 0;"></h2>
 
-      <div class="grid grid-cols-2 gap-4">
+      <div class="grid">
         <div>
-          <div>Current Price</div>
-          <div id="currentPrice" class="text-lg font-semibold"></div>
+          <div class="metric-label">Current Price</div>
+          <div id="currentPrice" class="metric-value"></div>
         </div>
         <div>
-          <div>Predicted Price</div>
-          <div id="predictedPrice" class="text-lg font-semibold"></div>
+          <div class="metric-label">Predicted Price</div>
+          <div id="predictedPrice" class="metric-value"></div>
         </div>
       </div>
 
-      <div class="mt-4">
-        <div>Expected Return</div>
-        <div id="expectedReturn" class="text-lg font-semibold"></div>
+      <div style="margin-top: 16px;">
+        <div class="metric-label">Expected Return</div>
+        <div id="expectedReturn" class="metric-value"></div>
       </div>
 
-      <div class="mt-4">
-        <div>Confidence</div>
-        <div id="confidence"></div>
+      <div class="grid" style="margin-top: 16px;">
+        <div>
+          <div class="metric-label">Confidence</div>
+          <div id="confidence" class="metric-value"></div>
+        </div>
+        <div>
+          <div class="metric-label">Trade Grade</div>
+          <div id="tradeGrade" class="metric-value"></div>
+        </div>
       </div>
 
-      <div class="mt-4">
-        <div>Trade Grade</div>
-        <div id="tradeGrade"></div>
+      <div style="margin-top: 16px;">
+        <span id="signalBadge" class="badge"></span>
       </div>
 
-      <div class="mt-4">
-        <span id="signalBadge" class="px-3 py-1 rounded-full text-sm font-semibold"></span>
-      </div>
+      <hr />
 
-      <hr class="my-4 border-gray-700" />
+      <h3 style="margin: 0 0 8px 0; font-size: 1rem;">Risk Levels</h3>
+      <div>Stop Loss: <strong id="stopLoss"></strong></div>
+      <div>Take Profit: <strong id="takeProfit"></strong></div>
+      <div>Kelly %: <strong id="kellyPct"></strong></div>
 
-      <h3 class="font-semibold mb-2">Risk Levels</h3>
-      <div>Stop Loss: <span id="stopLoss"></span></div>
-      <div>Take Profit: <span id="takeProfit"></span></div>
-      <div>Kelly %: <span id="kellyPct"></span></div>
+      <hr />
 
-      <hr class="my-4 border-gray-700" />
-
-      <h3 class="font-semibold mb-2">Rationale</h3>
-      <div id="rationale"></div>
+      <h3 style="margin: 0 0 8px 0; font-size: 1rem;">Rationale</h3>
+      <div id="rationale" class="rationale"></div>
     </div>
-
-    <div id="mainContent" class="mt-10"></div>
   </div>
 
   <script>
-    const API = "https://stock-signals-production-3e18.up.railway.app";
+    // ========== CONFIG ==========
+    // Change this to your Railway backend URL after deployment
+    // Example: "https://your-app.up.railway.app"
+    const API_BASE = "https://stock-signals-production-3e18.up.railway.app";
+    // For local testing you can temporarily use: "http://localhost:8000"
 
     async function loadTicker() {
-      const ticker = document.getElementById("tickerInput").value.trim();
-      if (!ticker) return;
+      const input = document.getElementById("tickerInput");
+      const ticker = input.value.trim().toUpperCase();
+      if (!ticker) {
+        showError("Please enter a ticker symbol");
+        return;
+      }
 
+      const btn = document.getElementById("analyzeBtn");
+      btn.disabled = true;
       document.getElementById("loading").classList.remove("hidden");
-      document.getElementById("status").textContent = "● Loading";
+      document.getElementById("predictionCard").classList.add("hidden");
+      document.getElementById("errorCard").classList.add("hidden");
+      document.getElementById("status").textContent = "● Loading...";
 
       try {
-        const res = await fetch(`${API}/predict`, {
+        const res = await fetch(`${API_BASE}/predict`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ticker, horizonDays: 14 })
+          body: JSON.stringify({ ticker, horizonDays: 14 }),
         });
 
         const data = await res.json();
-        renderPrediction(data);
 
+        if (!res.ok) {
+          throw new Error(data.error || data.message || `HTTP ${res.status}`);
+        }
+
+        renderPrediction(data);
         document.getElementById("status").textContent = "● Live";
       } catch (err) {
-        document.getElementById("loading").textContent = "Error: " + err.message;
-        document.getElementById("status").textContent = "Error";
+        console.error(err);
+        showError(err.message || "Failed to fetch prediction");
+        document.getElementById("status").textContent = "● Error";
+      } finally {
+        document.getElementById("loading").classList.add("hidden");
+        btn.disabled = false;
       }
     }
 
+    function showError(msg) {
+      document.getElementById("errorCard").classList.remove("hidden");
+      document.getElementById("errorMessage").textContent = msg;
+    }
+
     function renderPrediction(p) {
-      document.getElementById("loading").classList.add("hidden");
       document.getElementById("predictionCard").classList.remove("hidden");
 
-      document.getElementById("tickerName").textContent = p.ticker;
-      document.getElementById("currentPrice").textContent = "$" + p.entryPrice.toFixed(2);
-      document.getElementById("predictedPrice").textContent = "$" + p.predictedPrice.toFixed(2);
+      document.getElementById("tickerName").textContent = p.ticker || "—";
+      document.getElementById("currentPrice").textContent =
+        p.entryPrice ? "$" + p.entryPrice.toFixed(2) : "—";
+      document.getElementById("predictedPrice").textContent =
+        p.predictedPrice ? "$" + p.predictedPrice.toFixed(2) : "—";
 
-      document.getElementById("expectedReturn").textContent =
-        (p.expectedReturn >= 0 ? "+" : "") + (p.expectedReturn * 100).toFixed(1) + "%";
-      document.getElementById("expectedReturn").className =
-        "text-lg font-semibold " + (p.expectedReturn >= 0 ? "positive" : "negative");
+      const ret = p.expectedReturn ?? 0;
+      const retEl = document.getElementById("expectedReturn");
+      retEl.textContent = (ret >= 0 ? "+" : "") + (ret * 100).toFixed(2) + "%";
+      retEl.className = "metric-value " + (ret >= 0 ? "positive" : "negative");
 
-      document.getElementById("confidence").textContent = Math.round(p.confidence * 100) + "%";
-      document.getElementById("tradeGrade").textContent = p.tradeGrade.toFixed(2);
+      document.getElementById("confidence").textContent =
+        Math.round((p.confidence ?? 0) * 100) + "%";
+      document.getElementById("tradeGrade").textContent =
+        (p.tradeGrade ?? 0).toFixed(3);
 
+      const signal = (p.signal || "neutral").toLowerCase();
       const badge = document.getElementById("signalBadge");
-      badge.textContent = p.signal.toUpperCase();
-      badge.className =
-        "px-3 py-1 rounded-full text-sm font-semibold " +
-        (p.signal === "buy"
-          ? "badge-buy"
-          : p.signal === "sell"
-          ? "badge-sell"
-          : p.signal === "avoid"
-          ? "badge-avoid"
-          : "badge-hold");
+      badge.textContent = signal.toUpperCase();
+      badge.className = "badge badge-" + (signal === "buy" || signal === "sell" ? signal : "neutral");
 
-      document.getElementById("stopLoss").textContent = "$" + p.stopLoss.toFixed(2);
-      document.getElementById("takeProfit").textContent = "$" + p.takeProfit.toFixed(2);
-      document.getElementById("kellyPct").textContent = (p.kellyPct * 100).toFixed(1) + "%";
+      document.getElementById("stopLoss").textContent =
+        p.stopLoss ? "$" + p.stopLoss.toFixed(2) : "—";
+      document.getElementById("takeProfit").textContent =
+        p.takeProfit ? "$" + p.takeProfit.toFixed(2) : "—";
+      document.getElementById("kellyPct").textContent =
+        ((p.kellyPct ?? 0) * 100).toFixed(1) + "%";
 
-      document.getElementById("rationale").textContent = p.rationale || "Analysis complete.";
+      document.getElementById("rationale").textContent =
+        p.rationale || "Analysis complete.";
     }
+
+    // Allow Enter key
+    document.getElementById("tickerInput").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") loadTicker();
+    });
   </script>
 </body>
 </html>
