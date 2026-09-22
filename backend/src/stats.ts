@@ -1,3 +1,5 @@
+// backend/src/stats.ts
+
 export function clamp(x: number, lo: number, hi: number): number {
   if (!Number.isFinite(x)) return lo;
   return Math.min(Math.max(x, lo), hi);
@@ -6,11 +8,15 @@ export function clamp(x: number, lo: number, hi: number): number {
 export function sma(xs: number[], n: number): number {
   if (!Array.isArray(xs) || xs.length < n || n <= 0) return 0;
   let sum = 0;
+  let count = 0;
   for (let i = xs.length - n; i < xs.length; i++) {
     const v = xs[i];
-    if (Number.isFinite(v)) sum += v;
+    if (Number.isFinite(v)) {
+      sum += v;
+      count++;
+    }
   }
-  return sum / n;
+  return count > 0 ? sum / count : 0;
 }
 
 export function logReturns(closes: number[]): number[] {
@@ -42,15 +48,13 @@ export function autocorrelation(xs: number[], lag: number): number {
     }
   }
 
-  for (let i = 0; i < xs.length; i++) {
-    const v = xs[i];
+  for (const v of xs) {
     if (Number.isFinite(v)) {
       den += (v - mean) * (v - mean);
     }
   }
 
-  if (den === 0) return 0;
-  return num / den;
+  return den === 0 ? 0 : num / den;
 }
 
 export function std(xs: number[]): number {
@@ -60,13 +64,15 @@ export function std(xs: number[]): number {
     xs.reduce((a, b) => (Number.isFinite(b) ? a + b : a), 0) / xs.length;
 
   let sum = 0;
+  let count = 0;
   for (const v of xs) {
     if (Number.isFinite(v)) {
       sum += (v - mean) * (v - mean);
+      count++;
     }
   }
 
-  return Math.sqrt(sum / (xs.length - 1));
+  return count > 1 ? Math.sqrt(sum / (count - 1)) : 0;
 }
 
 export function percentile(sorted: number[], p: number): number {
@@ -92,62 +98,101 @@ export function gauss(): number {
   return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
 }
 
-export function rsi(closes: number[], period: number): number {
-  if (!Array.isArray(closes) || closes.length <= period) return 0;
+/**
+ * Approximate Wilder RSI
+ */
+export function rsi(closes: number[], period = 14): number {
+  if (!Array.isArray(closes) || closes.length <= period) return 50;
 
-  let gains = 0;
-  let losses = 0;
+  let avgGain = 0;
+  let avgLoss = 0;
 
-  for (let i = closes.length - period; i < closes.length; i++) {
+  // First average
+  for (let i = 1; i <= period; i++) {
     const diff = closes[i] - closes[i - 1];
-    if (!Number.isFinite(diff)) continue;
-    if (diff > 0) gains += diff;
-    else losses -= diff;
+    if (diff >= 0) avgGain += diff;
+    else avgLoss -= diff;
   }
+  avgGain /= period;
+  avgLoss /= period;
 
-  const avgGain = gains / period;
-  const avgLoss = losses / period;
+  // Wilder smoothing
+  for (let i = period + 1; i < closes.length; i++) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff >= 0) {
+      avgGain = (avgGain * (period - 1) + diff) / period;
+      avgLoss = (avgLoss * (period - 1)) / period;
+    } else {
+      avgGain = (avgGain * (period - 1)) / period;
+      avgLoss = (avgLoss * (period - 1) - diff) / period;
+    }
+  }
 
   if (avgLoss === 0) return 100;
   const rs = avgGain / avgLoss;
   return 100 - 100 / (1 + rs);
 }
 
-export function macd(closes: number[]) {
-  if (!Array.isArray(closes) || closes.length < 35) {
+/**
+ * Proper MACD with real EMA series
+ */
+export function macd(
+  closes: number[],
+  fastPeriod = 12,
+  slowPeriod = 26,
+  signalPeriod = 9,
+) {
+  if (!Array.isArray(closes) || closes.length < slowPeriod + signalPeriod) {
     return { macd: 0, signal: 0, hist: 0 };
   }
 
-  const ema = (arr: number[], span: number) => {
-    const k = 2 / (span + 1);
-    let v = arr[0];
-    for (let i = 1; i < arr.length; i++) {
-      const x = arr[i];
-      if (Number.isFinite(x)) {
-        v = x * k + v * (1 - k);
-      }
+  const ema = (data: number[], period: number): number[] => {
+    const k = 2 / (period + 1);
+    const result: number[] = [];
+    let prev = data[0];
+
+    for (let i = 0; i < data.length; i++) {
+      const val = Number.isFinite(data[i]) ? data[i] : prev;
+      const current = i === 0 ? val : val * k + prev * (1 - k);
+      result.push(current);
+      prev = current;
     }
-    return v;
+    return result;
   };
 
-  const fast = ema(closes, 12);
-  const slow = ema(closes, 26);
-  const macd = fast - slow;
+  const fastEMA = ema(closes, fastPeriod);
+  const slowEMA = ema(closes, slowPeriod);
 
-  const signal = ema([macd], 9);
-  const hist = macd - signal;
+  const macdLine: number[] = [];
+  for (let i = 0; i < closes.length; i++) {
+    macdLine.push(fastEMA[i] - slowEMA[i]);
+  }
 
-  return { macd, signal, hist };
+  const signalLine = ema(macdLine, signalPeriod);
+  const lastIdx = macdLine.length - 1;
+
+  const macdVal = macdLine[lastIdx];
+  const signalVal = signalLine[lastIdx];
+  const hist = macdVal - signalVal;
+
+  return {
+    macd: Number.isFinite(macdVal) ? macdVal : 0,
+    signal: Number.isFinite(signalVal) ? signalVal : 0,
+    hist: Number.isFinite(hist) ? hist : 0,
+  };
 }
 
-export function atr(h: number[], l: number[], c: number[], period: number): number {
+export function atr(
+  h: number[],
+  l: number[],
+  c: number[],
+  period = 14,
+): number {
   if (
     !Array.isArray(h) ||
     !Array.isArray(l) ||
     !Array.isArray(c) ||
-    h.length < period + 1 ||
-    l.length < period + 1 ||
-    c.length < period + 1
+    h.length < period + 1
   ) {
     return 0;
   }
@@ -159,38 +204,43 @@ export function atr(h: number[], l: number[], c: number[], period: number): numb
     const low = l[i];
     const prevClose = c[i - 1];
 
-    if (!Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(prevClose)) {
+    if (
+      !Number.isFinite(high) ||
+      !Number.isFinite(low) ||
+      !Number.isFinite(prevClose)
+    ) {
       continue;
     }
 
     const tr = Math.max(
       high - low,
       Math.abs(high - prevClose),
-      Math.abs(low - prevClose)
+      Math.abs(low - prevClose),
     );
-
     trs.push(tr);
   }
 
   if (trs.length < period) return 0;
-
   return sma(trs, period);
 }
 
-export function bollingerWidth(closes: number[], n: number): number {
+export function bollingerWidth(closes: number[], n = 20): number {
   if (!Array.isArray(closes) || closes.length < n) return 0;
 
   const slice = closes.slice(-n);
   const mean =
-    slice.reduce((a, b) => (Number.isFinite(b) ? a + b : a), 0) / slice.length;
+    slice.reduce((a, b) => (Number.isFinite(b) ? a + b : a), 0) /
+    slice.length;
 
   let variance = 0;
+  let count = 0;
   for (const v of slice) {
     if (Number.isFinite(v)) {
       variance += (v - mean) * (v - mean);
+      count++;
     }
   }
 
-  const std = Math.sqrt(variance / slice.length);
-  return std / Math.max(mean, 1);
+  const stdDev = count > 0 ? Math.sqrt(variance / count) : 0;
+  return stdDev / Math.max(mean, 1e-9);
 }
