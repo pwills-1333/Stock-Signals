@@ -1,3 +1,21 @@
+# Stock Signal Engine (Ψ + CTR-A)
+
+Hybrid stock prediction API with adaptive psychological bias (Ψ) and Coherence Theory of Reality (CTR-A) gate.
+
+**Data sources:** Finnhub (primary) → Yahoo Finance fallback  
+**Stack:** Deno + Oak (backend) · Express static frontend
+
+## Features
+
+- Multi-head Ridge model ensemble
+- Regime detection (trend / mean-reversion / chaos / volatility…)
+- Adaptive Ψ psychological bias layer
+- CTR-A coherence gate
+- ATR-based stop-loss & take-profit
+- Short-term OHLC caching
+- Universe screening endpoint
+- Basic per-IP rate limiting
+
 ## Railway Deploy (Recommended)
 
 ### Backend
