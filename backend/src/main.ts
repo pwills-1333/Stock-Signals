@@ -8,7 +8,6 @@ import { checkRateLimit } from "./rateLimit.ts";
 const app = new Application();
 const router = new Router();
 
-// Allowed frontend origins (add your Railway frontend URL if you deploy one)
 const ALLOWED_ORIGINS = [
   "http://localhost:3000",
   "http://127.0.0.1:3000",
@@ -21,7 +20,6 @@ function getClientIp(ctx: { request: { headers: Headers; ip: string } }): string
   return ctx.request.ip || "unknown";
 }
 
-// ---------- Health & Root ----------
 router.get("/health", (ctx) => {
   ctx.response.body = {
     ok: true,
@@ -38,7 +36,6 @@ router.get("/", (ctx) => {
   };
 });
 
-// ---------- Predict ----------
 router.post("/predict", async (ctx) => {
   const ip = getClientIp(ctx);
   const limit = checkRateLimit(ip);
@@ -63,8 +60,7 @@ router.post("/predict", async (ctx) => {
     }
 
     const horizonDays = Number(body.horizonDays) || 14;
-    const result = await predict({ ticker, horizonDays });
-    ctx.response.body = result;
+    ctx.response.body = await predict({ ticker, horizonDays });
   } catch (err) {
     console.error("Prediction error:", err);
     ctx.response.status = 500;
@@ -75,7 +71,6 @@ router.post("/predict", async (ctx) => {
   }
 });
 
-// ---------- Screen universe ----------
 router.post("/screen", async (ctx) => {
   const ip = getClientIp(ctx);
   const limit = checkRateLimit(ip);
@@ -101,12 +96,11 @@ router.post("/screen", async (ctx) => {
       return;
     }
 
-    const result = await screenUniverse({
+    ctx.response.body = await screenUniverse({
       universe,
       limit: limitN,
       horizonDays,
     });
-    ctx.response.body = result;
   } catch (err) {
     console.error("Screen error:", err);
     ctx.response.status = 500;
@@ -117,14 +111,11 @@ router.post("/screen", async (ctx) => {
   }
 });
 
-// ---------- Middleware ----------
 app.use(
   oakCors({
-    // Use specific origins in production; fall back to * for open demo
     origin: (ctx) => {
       const origin = ctx.request.headers.get("Origin") || "";
       if (ALLOWED_ORIGINS.includes(origin)) return origin;
-      // Allow all for public demo — tighten by removing this line and listing only real origins
       return origin || "*";
     },
     methods: ["GET", "POST", "OPTIONS"],
@@ -135,8 +126,6 @@ app.use(
 app.use(router.routes());
 app.use(router.allowedMethods());
 
-// ---------- Start ----------
 const port = Number(Deno.env.get("PORT") ?? 8000);
-
 console.log(`Stock-Signals API starting on http://0.0.0.0:${port}`);
 await app.listen({ port, hostname: "0.0.0.0" });
