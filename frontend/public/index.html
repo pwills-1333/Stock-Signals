@@ -198,9 +198,8 @@
   </div>
 
   <script>
-  <script>
     // ========== CONFIG ==========
-    // Full URL including https://  — no trailing slash
+    // Full URL including https:// — no trailing slash
     const API_BASE = "https://stock-signals-production-3e18.up.railway.app";
 
     async function loadTicker() {
@@ -219,7 +218,7 @@
       document.getElementById("status").textContent = "● Loading...";
 
       try {
-        const res = await fetch(`${API_BASE}/predict`, {
+        const res = await fetch(API_BASE + "/predict", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ticker, horizonDays: 14 }),
@@ -228,7 +227,7 @@
         const data = await res.json();
 
         if (!res.ok) {
-          throw new Error(data.error || data.message || `HTTP ${res.status}`);
+          throw new Error(data.error || data.message || "HTTP " + res.status);
         }
 
         renderPrediction(data);
@@ -270,7 +269,8 @@
       const signal = (p.signal || "neutral").toLowerCase();
       const badge = document.getElementById("signalBadge");
       badge.textContent = signal.toUpperCase();
-      badge.className = "badge badge-" + (signal === "buy" || signal === "sell" ? signal : "neutral");
+      badge.className =
+        "badge badge-" + (signal === "buy" || signal === "sell" ? signal : "neutral");
 
       document.getElementById("stopLoss").textContent =
         p.stopLoss ? "$" + p.stopLoss.toFixed(2) : "—";
@@ -283,8 +283,7 @@
         p.rationale || "Analysis complete.";
     }
 
-    // Allow Enter key
-    document.getElementById("tickerInput").addEventListener("keydown", (e) => {
+    document.getElementById("tickerInput").addEventListener("keydown", function (e) {
       if (e.key === "Enter") loadTicker();
     });
   </script>
