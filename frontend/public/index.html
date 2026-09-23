@@ -198,11 +198,10 @@
   </div>
 
   <script>
-      // ========== CONFIG ==========
-    // Set to your Railway backend URL (no trailing slash)
-    // Example: "https://stock-signals-production-3e18.up.railway.app"
-    const API_BASE = "https://stock-signals-production-3e18.up.railway.app";
-    // Local testing: const API_BASE = "http://localhost:8000";
+     // ========== CONFIG ==========
+// Backend API only (must return JSON on /health)
+const API_BASE = "stock-signals-production-3e18.up.railway.app";
+// Do NOT use the frontend URL here
 
     async function loadTicker() {
       const input = document.getElementById("tickerInput");
