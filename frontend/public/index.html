@@ -198,10 +198,10 @@
   </div>
 
   <script>
-     // ========== CONFIG ==========
-// Backend API only (must return JSON on /health)
-const API_BASE = "stock-signals-production-3e18.up.railway.app";
-// Do NOT use the frontend URL here
+  <script>
+    // ========== CONFIG ==========
+    // Full URL including https://  — no trailing slash
+    const API_BASE = "https://stock-signals-production-3e18.up.railway.app";
 
     async function loadTicker() {
       const input = document.getElementById("tickerInput");
