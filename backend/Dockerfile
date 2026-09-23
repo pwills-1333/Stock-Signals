@@ -5,11 +5,13 @@ WORKDIR /app
 COPY deno.json .
 COPY src/ ./src/
 COPY artifacts/ ./artifacts/
+# Frontend static files (repo root = backend → parent has frontend)
+# If Root Directory is "backend", copy from build context only what's inside backend.
+# Prefer Option A unless you set Root Directory empty and adjust paths.
 
 RUN deno cache src/main.ts
 
 ENV PORT=8000
-
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
