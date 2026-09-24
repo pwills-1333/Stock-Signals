@@ -113,13 +113,10 @@ router.post("/screen", async (ctx) => {
 
 app.use(
   oakCors({
-    origin: (ctx) => {
-      const origin = ctx.request.headers.get("Origin") || "";
-      if (ALLOWED_ORIGINS.includes(origin)) return origin;
-      return origin || "*";
-    },
+    origin: "*",
     methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type"],
+    optionsSuccessStatus: 200,
   }),
 );
 
