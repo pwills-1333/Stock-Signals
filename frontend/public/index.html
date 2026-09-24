@@ -198,8 +198,6 @@
   </div>
 
   <script>
-    // ========== CONFIG ==========
-    // Full URL including https:// — no trailing slash
     const API_BASE = "https://stock-signals-production-3e18.up.railway.app";
 
     async function loadTicker() {
@@ -230,42 +228,17 @@
           throw new Error(data.error || data.message || "HTTP " + res.status);
         }
 
-function renderPrediction(p) {
-  document.getElementById("predictionCard").classList.remove("hidden");
-
-  document.getElementById("tickerName").textContent = p.ticker || "—";
-  document.getElementById("currentPrice").textContent =
-    p.entryPrice ? "$" + p.entryPrice.toFixed(2) : "—";
-  document.getElementById("predictedPrice").textContent =
-    p.predictedPrice ? "$" + p.predictedPrice.toFixed(2) : "—";
-
-  const ret = p.expectedReturn ?? 0;
-  const retEl = document.getElementById("expectedReturn");
-  retEl.textContent = (ret >= 0 ? "+" : "") + (ret * 100).toFixed(2) + "%";
-  retEl.className = "metric-value " + (ret >= 0 ? "positive" : "negative");
-
-  document.getElementById("confidence").textContent =
-    Math.round((p.confidence ?? 0) * 100) + "%";
-  document.getElementById("tradeGrade").textContent =
-    (p.tradeGrade ?? 0).toFixed(3);
-
-  const signal = (p.signal || "neutral").toLowerCase();
-  const badge = document.getElementById("signalBadge");
-  badge.textContent = signal.toUpperCase();
-  badge.className =
-    "badge badge-" + (signal === "buy" || signal === "sell" ? signal : "neutral");
-
-  document.getElementById("stopLoss").textContent =
-    p.stopLoss ? "$" + p.stopLoss.toFixed(2) : "—";
-  document.getElementById("takeProfit").textContent =
-    p.takeProfit ? "$" + p.takeProfit.toFixed(2) : "—";
-  document.getElementById("kellyPct").textContent =
-    ((p.kellyPct ?? 0) * 100).toFixed(1) + "%";
-
-  document.getElementById("rationale").textContent =
-    p.rationale || "Analysis complete.";
-}
-
+        renderPrediction(data);
+        document.getElementById("status").textContent = "● Live";
+      } catch (err) {
+        console.error(err);
+        showError(err.message || "Failed to fetch prediction");
+        document.getElementById("status").textContent = "● Error";
+      } finally {
+        document.getElementById("loading").classList.add("hidden");
+        btn.disabled = false;
+      }
+    }
 
     function showError(msg) {
       document.getElementById("errorCard").classList.remove("hidden");
@@ -275,11 +248,15 @@ function renderPrediction(p) {
     function renderPrediction(p) {
       document.getElementById("predictionCard").classList.remove("hidden");
 
+      const fmt = (v) =>
+        typeof v === "number" && !isNaN(v)
+          ? "$" + v.toFixed(2)
+          : "—";
+
       document.getElementById("tickerName").textContent = p.ticker || "—";
-      document.getElementById("currentPrice").textContent =
-        p.entryPrice ? "$" + p.entryPrice.toFixed(2) : "—";
-      document.getElementById("predictedPrice").textContent =
-        p.predictedPrice ? "$" + p.predictedPrice.toFixed(2) : "—";
+
+      document.getElementById("currentPrice").textContent = fmt(p.entryPrice);
+      document.getElementById("predictedPrice").textContent = fmt(p.predictedPrice);
 
       const ret = p.expectedReturn ?? 0;
       const retEl = document.getElementById("expectedReturn");
@@ -288,6 +265,7 @@ function renderPrediction(p) {
 
       document.getElementById("confidence").textContent =
         Math.round((p.confidence ?? 0) * 100) + "%";
+
       document.getElementById("tradeGrade").textContent =
         (p.tradeGrade ?? 0).toFixed(3);
 
@@ -297,10 +275,9 @@ function renderPrediction(p) {
       badge.className =
         "badge badge-" + (signal === "buy" || signal === "sell" ? signal : "neutral");
 
-      document.getElementById("stopLoss").textContent =
-        p.stopLoss ? "$" + p.stopLoss.toFixed(2) : "—";
-      document.getElementById("takeProfit").textContent =
-        p.takeProfit ? "$" + p.takeProfit.toFixed(2) : "—";
+      document.getElementById("stopLoss").textContent = fmt(p.stopLoss);
+      document.getElementById("takeProfit").textContent = fmt(p.takeProfit);
+
       document.getElementById("kellyPct").textContent =
         ((p.kellyPct ?? 0) * 100).toFixed(1) + "%";
 
