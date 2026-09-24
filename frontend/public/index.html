@@ -230,18 +230,14 @@
           throw new Error(data.error || data.message || "HTTP " + res.status);
         }
 
-       function renderPrediction(p) {
+function renderPrediction(p) {
   document.getElementById("predictionCard").classList.remove("hidden");
 
-  const fmt = (v) =>
-    typeof v === "number" && !isNaN(v)
-      ? "$" + v.toFixed(2)
-      : "—";
-
   document.getElementById("tickerName").textContent = p.ticker || "—";
-
-  document.getElementById("currentPrice").textContent = fmt(p.entryPrice);
-  document.getElementById("predictedPrice").textContent = fmt(p.predictedPrice);
+  document.getElementById("currentPrice").textContent =
+    p.entryPrice ? "$" + p.entryPrice.toFixed(2) : "—";
+  document.getElementById("predictedPrice").textContent =
+    p.predictedPrice ? "$" + p.predictedPrice.toFixed(2) : "—";
 
   const ret = p.expectedReturn ?? 0;
   const retEl = document.getElementById("expectedReturn");
@@ -250,7 +246,6 @@
 
   document.getElementById("confidence").textContent =
     Math.round((p.confidence ?? 0) * 100) + "%";
-
   document.getElementById("tradeGrade").textContent =
     (p.tradeGrade ?? 0).toFixed(3);
 
@@ -260,9 +255,10 @@
   badge.className =
     "badge badge-" + (signal === "buy" || signal === "sell" ? signal : "neutral");
 
-  document.getElementById("stopLoss").textContent = fmt(p.stopLoss);
-  document.getElementById("takeProfit").textContent = fmt(p.takeProfit);
-
+  document.getElementById("stopLoss").textContent =
+    p.stopLoss ? "$" + p.stopLoss.toFixed(2) : "—";
+  document.getElementById("takeProfit").textContent =
+    p.takeProfit ? "$" + p.takeProfit.toFixed(2) : "—";
   document.getElementById("kellyPct").textContent =
     ((p.kellyPct ?? 0) * 100).toFixed(1) + "%";
 
