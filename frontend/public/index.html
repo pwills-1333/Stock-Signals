@@ -13,11 +13,8 @@
       --green: #4ade80;
       --red: #f87171;
       --blue: #3b82f6;
-      --yellow: #fbbf24;
     }
-
     * { box-sizing: border-box; }
-
     body {
       background: var(--bg);
       color: var(--text);
@@ -26,33 +23,15 @@
       padding: 0;
       line-height: 1.5;
     }
-
-    .container {
-      max-width: 720px;
-      margin: 0 auto;
-      padding: 24px 16px;
-    }
-
-    h1 {
-      font-size: 1.75rem;
-      margin-bottom: 1.5rem;
-      font-weight: 700;
-    }
-
+    .container { max-width: 720px; margin: 0 auto; padding: 24px 16px; }
+    h1 { font-size: 1.75rem; margin-bottom: 1.5rem; font-weight: 700; }
     .card {
       background: var(--card);
       border-radius: 12px;
       padding: 20px;
       margin-bottom: 20px;
     }
-
-    label {
-      display: block;
-      margin-bottom: 6px;
-      font-size: 0.9rem;
-      color: var(--muted);
-    }
-
+    label { display: block; margin-bottom: 6px; font-size: 0.9rem; color: var(--muted); }
     input {
       width: 100%;
       padding: 10px 12px;
@@ -62,7 +41,6 @@
       color: white;
       font-size: 1rem;
     }
-
     button {
       margin-top: 12px;
       padding: 10px 20px;
@@ -74,21 +52,12 @@
       cursor: pointer;
       font-weight: 600;
     }
-
     button:hover { opacity: 0.9; }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
-
-    .status {
-      margin-top: 10px;
-      font-size: 0.875rem;
-      color: var(--muted);
-    }
-
+    .status { margin-top: 10px; font-size: 0.875rem; color: var(--muted); }
     .hidden { display: none; }
-
     .positive { color: var(--green); }
     .negative { color: var(--red); }
-
     .badge {
       display: inline-block;
       padding: 4px 12px;
@@ -100,35 +69,16 @@
     .badge-buy { background: var(--green); color: #000; }
     .badge-sell { background: var(--red); color: #000; }
     .badge-neutral { background: #6b7280; color: #fff; }
-
     .grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 16px;
       margin-top: 12px;
     }
-
-    .metric-label {
-      font-size: 0.8rem;
-      color: var(--muted);
-    }
-
-    .metric-value {
-      font-size: 1.25rem;
-      font-weight: 600;
-    }
-
-    hr {
-      border: none;
-      border-top: 1px solid #374151;
-      margin: 20px 0;
-    }
-
-    .rationale {
-      font-size: 0.9rem;
-      color: var(--muted);
-      white-space: pre-wrap;
-    }
+    .metric-label { font-size: 0.8rem; color: var(--muted); }
+    .metric-value { font-size: 1.25rem; font-weight: 600; }
+    hr { border: none; border-top: 1px solid #374151; margin: 20px 0; }
+    .rationale { font-size: 0.9rem; color: var(--muted); white-space: pre-wrap; }
   </style>
 </head>
 <body>
@@ -138,8 +88,8 @@
     <div class="card">
       <label for="tickerInput">Ticker Symbol</label>
       <input id="tickerInput" placeholder="AAPL, TSLA, NVDA, MSFT..." autocomplete="off" />
-      <button id="analyzeBtn" onclick="loadTicker()">Analyze</button>
-      <div id="status" class="status">● Idle</div>
+      <button type="button" id="analyzeBtn">Analyze</button>
+      <div id="status" class="status">● Ready — enter a ticker and click Analyze</div>
     </div>
 
     <div id="loading" class="card hidden">Loading prediction...</div>
@@ -184,14 +134,12 @@
       </div>
 
       <hr />
-
       <h3 style="margin: 0 0 8px 0; font-size: 1rem;">Risk Levels</h3>
       <div>Stop Loss: <strong id="stopLoss"></strong></div>
       <div>Take Profit: <strong id="takeProfit"></strong></div>
       <div>Kelly %: <strong id="kellyPct"></strong></div>
 
       <hr />
-
       <h3 style="margin: 0 0 8px 0; font-size: 1rem;">Model diagnostics</h3>
       <div class="grid">
         <div>
@@ -221,103 +169,109 @@
       </div>
 
       <hr />
-
       <h3 style="margin: 0 0 8px 0; font-size: 1rem;">Rationale</h3>
       <div id="rationale" class="rationale"></div>
     </div>
   </div>
 
   <script>
+    // Must match your live Railway API URL
     const API_BASE = "https://stock-signals-production-3e18.up.railway.app";
 
+    function showError(msg) {
+      const card = document.getElementById("errorCard");
+      const el = document.getElementById("errorMessage");
+      if (card) card.classList.remove("hidden");
+      if (el) el.textContent = String(msg || "Unknown error");
+    }
+
+    function setStatus(text) {
+      const s = document.getElementById("status");
+      if (s) s.textContent = text;
+    }
+
     async function loadTicker() {
-      const input = document.getElementById("tickerInput");
-      const ticker = input.value.trim().toUpperCase();
-      if (!ticker) {
-        showError("Please enter a ticker symbol");
-        return;
-      }
+      try {
+        const input = document.getElementById("tickerInput");
+        const ticker = (input && input.value ? input.value : "").trim().toUpperCase();
 
-      const btn = document.getElementById("analyzeBtn");
-      btn.disabled = true;
-      document.getElementById("loading").classList.remove("hidden");
-      document.getElementById("predictionCard").classList.add("hidden");
-      document.getElementById("errorCard").classList.add("hidden");
-      document.getElementById("status").textContent = "● Loading...";
+        if (!ticker) {
+          showError("Please enter a ticker symbol");
+          setStatus("● Error");
+          return;
+        }
 
-        try {
+        const btn = document.getElementById("analyzeBtn");
+        if (btn) btn.disabled = true;
+
+        const loading = document.getElementById("loading");
+        const pred = document.getElementById("predictionCard");
+        const errCard = document.getElementById("errorCard");
+        if (loading) loading.classList.remove("hidden");
+        if (pred) pred.classList.add("hidden");
+        if (errCard) errCard.classList.add("hidden");
+        setStatus("● Loading...");
+
         const res = await fetch(API_BASE + "/predict", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ticker, horizonDays: 14 }),
+          body: JSON.stringify({ ticker: ticker, horizonDays: 14 }),
         });
 
-        const data = await res.json();
+        let data = {};
+        const text = await res.text();
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch (e) {
+          throw new Error("API returned non-JSON: " + text.slice(0, 120));
+        }
 
         if (!res.ok) {
           throw new Error(
-            data.error || data.message || data.rationale || "HTTP " + res.status,
+            data.error || data.message || data.rationale || ("HTTP " + res.status)
           );
         }
 
         if (!data.entryPrice || data.entryPrice === 0) {
-          showError(data.rationale || "No usable market data for this ticker");
-          document.getElementById("status").textContent = "● Error";
+          showError(data.rationale || data.error || "No usable market data for this ticker");
+          setStatus("● Error");
           return;
         }
 
         renderPrediction(data);
-        document.getElementById("status").textContent = "● Live";
-      } catch (err) {
-
-        const data = await res.json();
-
-        if (!res.ok) {
-          throw new Error(data.error || data.message || "HTTP " + res.status);
-        }
-
-        if (!data.entryPrice || data.entryPrice === 0) {
-          showError(data.rationale || "No usable market data for this ticker");
-          document.getElementById("status").textContent = "● Error";
-          return;
-        }
-
-        renderPrediction(data);
-        document.getElementById("status").textContent = "● Live";
+        setStatus("● Live");
       } catch (err) {
         console.error(err);
-        showError(err.message || "Failed to fetch prediction");
-        document.getElementById("status").textContent = "● Error";
+        showError(err && err.message ? err.message : "Failed to fetch prediction");
+        setStatus("● Error");
       } finally {
-        document.getElementById("loading").classList.add("hidden");
-        btn.disabled = false;
+        const loading = document.getElementById("loading");
+        const btn = document.getElementById("analyzeBtn");
+        if (loading) loading.classList.add("hidden");
+        if (btn) btn.disabled = false;
       }
-    }
-
-    function showError(msg) {
-      document.getElementById("errorCard").classList.remove("hidden");
-      document.getElementById("errorMessage").textContent = msg;
     }
 
     function renderPrediction(p) {
       document.getElementById("predictionCard").classList.remove("hidden");
 
-      const fmt = (v) =>
-        typeof v === "number" && !isNaN(v) ? "$" + v.toFixed(2) : "—";
+      const fmt = function (v) {
+        return typeof v === "number" && !isNaN(v) ? "$" + v.toFixed(2) : "—";
+      };
 
       document.getElementById("tickerName").textContent = p.ticker || "—";
       document.getElementById("currentPrice").textContent = fmt(p.entryPrice);
       document.getElementById("predictedPrice").textContent = fmt(p.predictedPrice);
 
-      const ret = p.expectedReturn ?? 0;
+      const ret = p.expectedReturn != null ? p.expectedReturn : 0;
       const retEl = document.getElementById("expectedReturn");
       retEl.textContent = (ret >= 0 ? "+" : "") + (ret * 100).toFixed(2) + "%";
       retEl.className = "metric-value " + (ret >= 0 ? "positive" : "negative");
 
       document.getElementById("confidence").textContent =
-        Math.round((p.confidence ?? 0) * 100) + "%";
+        Math.round((p.confidence != null ? p.confidence : 0) * 100) + "%";
       document.getElementById("tradeGrade").textContent =
-        (p.tradeGrade ?? 0).toFixed(3);
+        (p.tradeGrade != null ? p.tradeGrade : 0).toFixed(3);
 
       const signal = (p.signal || "neutral").toLowerCase();
       const badge = document.getElementById("signalBadge");
@@ -328,7 +282,7 @@
       document.getElementById("stopLoss").textContent = fmt(p.stopLoss);
       document.getElementById("takeProfit").textContent = fmt(p.takeProfit);
       document.getElementById("kellyPct").textContent =
-        ((p.kellyPct ?? 0) * 100).toFixed(1) + "%";
+        ((p.kellyPct != null ? p.kellyPct : 0) * 100).toFixed(1) + "%";
 
       document.getElementById("regime").textContent = p.regime || "—";
       document.getElementById("psi").textContent =
@@ -338,18 +292,37 @@
       document.getElementById("hurst").textContent =
         typeof p.hurst === "number" ? p.hurst.toFixed(3) : "—";
       document.getElementById("garchVol").textContent =
-        typeof p.garchVol === "number"
-          ? (p.garchVol * 100).toFixed(2) + "%"
-          : "—";
+        typeof p.garchVol === "number" ? (p.garchVol * 100).toFixed(2) + "%" : "—";
       document.getElementById("signalQuality").textContent =
-        Math.round((p.signalQuality ?? p.confidence ?? 0) * 100) + "%";
+        Math.round((p.signalQuality != null ? p.signalQuality : p.confidence || 0) * 100) + "%";
 
       document.getElementById("rationale").textContent =
         p.rationale || "Analysis complete.";
     }
 
-    document.getElementById("tickerInput").addEventListener("keydown", function (e) {
-      if (e.key === "Enter") loadTicker();
+    // Wire button after DOM is ready (more reliable than inline onclick)
+    document.addEventListener("DOMContentLoaded", function () {
+      const btn = document.getElementById("analyzeBtn");
+      const input = document.getElementById("tickerInput");
+
+      if (btn) {
+        btn.addEventListener("click", function (e) {
+          e.preventDefault();
+          loadTicker();
+        });
+      }
+
+      if (input) {
+        input.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            loadTicker();
+          }
+        });
+      }
+
+      setStatus("● Ready — enter a ticker and click Analyze");
+      console.log("Stock Signals UI loaded. API:", API_BASE);
     });
   </script>
 </body>
