@@ -1,6 +1,12 @@
 // backend/artifacts/multiArtifacts.ts
 import type { ModelArtifact, ModelHead } from "../src/types.ts";
-import { join, dirname, fromFileUrl } from "https://deno.land/std@0.224.0/path/mod.ts";
+import {
+  join,
+  dirname,
+  fromFileUrl,
+} from "https://deno.land/std@0.224.0/path/mod.ts";
+
+let cachedArtifact: ModelArtifact | null = null;
 
 async function loadJSON(path: string): Promise<any | null> {
   try {
@@ -13,28 +19,30 @@ async function loadJSON(path: string): Promise<any | null> {
 }
 
 function resolveArtifactsDir(dir: string): string {
-  // Absolute path wins
   if (dir.startsWith("/") || /^[A-Za-z]:[\\/]/.test(dir)) {
     return dir;
   }
 
-  // Prefer directory next to this file (works in Docker: /app/artifacts)
   try {
     const here = dirname(fromFileUrl(import.meta.url));
+    // multiArtifacts.ts lives inside backend/artifacts/
     return join(here, dir === "artifacts" ? "." : dir);
   } catch {
-    // Fallback: cwd-relative
     return dir;
   }
 }
 
 /**
  * Loads every *.json file in the artifacts directory and merges all heads
- * into a single ModelArtifact.
+ * into a single ModelArtifact. Cached after first successful load.
  */
 export async function loadAllArtifacts(
   dir = "artifacts",
 ): Promise<ModelArtifact> {
+  if (cachedArtifact && cachedArtifact.heads.length > 0) {
+    return cachedArtifact;
+  }
+
   const resolved = resolveArtifactsDir(dir);
   const entries: string[] = [];
 
@@ -48,11 +56,7 @@ export async function loadAllArtifacts(
     }
   } catch (err) {
     console.error("Cannot read artifacts directory:", resolved, err);
-    return {
-      version: "empty",
-      feature_count: 0,
-      heads: [],
-    };
+    return { version: "empty", feature_count: 0, heads: [] };
   }
 
   const allHeads: ModelHead[] = [];
@@ -84,9 +88,20 @@ export async function loadAllArtifacts(
     `Loaded ${allHeads.length} heads from ${entries.length} artifact files in ${resolved}`,
   );
 
-  return {
+  const artifact: ModelArtifact = {
     version,
     feature_count: featureCount,
     heads: allHeads,
   };
+
+  if (allHeads.length > 0) {
+    cachedArtifact = artifact;
+  }
+
+  return artifact;
+}
+
+/** Optional: clear cache after redeploying new model files without restart */
+export function clearArtifactCache(): void {
+  cachedArtifact = null;
 }
