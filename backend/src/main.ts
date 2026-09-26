@@ -68,7 +68,6 @@ router.post("/predict", async (ctx) => {
     const horizonDays = Number(body.horizonDays) || 14;
     const result = await predict({ ticker, horizonDays });
 
-    // Empty / failed analysis → 422 so clients distinguish from success
     if (!result.entryPrice || result.entryPrice === 0) {
       ctx.response.status = 422;
       ctx.response.body = {
@@ -125,7 +124,6 @@ router.post("/screen", async (ctx) => {
       return;
     }
 
-    // Cap universe size to protect rate limits / latency
     const capped = universe.slice(0, 30);
 
     ctx.response.body = await screenUniverse({
@@ -143,14 +141,7 @@ router.post("/screen", async (ctx) => {
   }
 });
 
-const ALLOWED_ORIGINS = new Set([
-  "http://localhost:3000",
-  "http://127.0.0.1:3000",
-  "http://localhost:8080",
-  // Add your real frontend URL(s):
-  // "https://your-frontend.example.com",
-]);
-
+// IMPORTANT: use "*" so any frontend host can call the API
 app.use(
   oakCors({
     origin: "*",
