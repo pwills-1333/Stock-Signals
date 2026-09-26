@@ -1,6 +1,6 @@
 // backend/artifacts/multiArtifacts.ts
 import type { ModelArtifact, ModelHead } from "../src/types.ts";
-import { join } from "https://deno.land/std@0.224.0/path/mod.ts";
+import { join, dirname, fromFileUrl } from "https://deno.land/std@0.224.0/path/mod.ts";
 
 async function loadJSON(path: string): Promise<any | null> {
   try {
@@ -12,6 +12,22 @@ async function loadJSON(path: string): Promise<any | null> {
   }
 }
 
+function resolveArtifactsDir(dir: string): string {
+  // Absolute path wins
+  if (dir.startsWith("/") || /^[A-Za-z]:[\\/]/.test(dir)) {
+    return dir;
+  }
+
+  // Prefer directory next to this file (works in Docker: /app/artifacts)
+  try {
+    const here = dirname(fromFileUrl(import.meta.url));
+    return join(here, dir === "artifacts" ? "." : dir);
+  } catch {
+    // Fallback: cwd-relative
+    return dir;
+  }
+}
+
 /**
  * Loads every *.json file in the artifacts directory and merges all heads
  * into a single ModelArtifact.
@@ -19,16 +35,19 @@ async function loadJSON(path: string): Promise<any | null> {
 export async function loadAllArtifacts(
   dir = "artifacts",
 ): Promise<ModelArtifact> {
+  const resolved = resolveArtifactsDir(dir);
   const entries: string[] = [];
 
+  console.log(`Loading artifacts from: ${resolved} (cwd=${Deno.cwd()})`);
+
   try {
-    for await (const file of Deno.readDir(dir)) {
+    for await (const file of Deno.readDir(resolved)) {
       if (file.isFile && file.name.endsWith(".json")) {
-        entries.push(join(dir, file.name));
+        entries.push(join(resolved, file.name));
       }
     }
   } catch (err) {
-    console.error("Cannot read artifacts directory:", err);
+    console.error("Cannot read artifacts directory:", resolved, err);
     return {
       version: "empty",
       feature_count: 0,
@@ -62,7 +81,7 @@ export async function loadAllArtifacts(
   }
 
   console.log(
-    `Loaded ${allHeads.length} heads from ${entries.length} artifact files`,
+    `Loaded ${allHeads.length} heads from ${entries.length} artifact files in ${resolved}`,
   );
 
   return {
