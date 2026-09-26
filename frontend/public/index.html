@@ -245,12 +245,30 @@
       document.getElementById("errorCard").classList.add("hidden");
       document.getElementById("status").textContent = "● Loading...";
 
-      try {
+        try {
         const res = await fetch(API_BASE + "/predict", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ticker, horizonDays: 14 }),
         });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(
+            data.error || data.message || data.rationale || "HTTP " + res.status,
+          );
+        }
+
+        if (!data.entryPrice || data.entryPrice === 0) {
+          showError(data.rationale || "No usable market data for this ticker");
+          document.getElementById("status").textContent = "● Error";
+          return;
+        }
+
+        renderPrediction(data);
+        document.getElementById("status").textContent = "● Live";
+      } catch (err) {
 
         const data = await res.json();
 
