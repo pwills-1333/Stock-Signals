@@ -1,8 +1,16 @@
 // backend/src/data/yahoo.ts
 import type { OHLC } from "../types.ts";
 
+/**
+ * Correct Yahoo Finance base URL.
+ * query2 is required — query1 fails for many tickers.
+ */
 const BASE = "https://query2.finance.yahoo.com/v8/finance/chart";
 
+/**
+ * Yahoo requires a User-Agent header.
+ * Without it, Yahoo returns 404 or empty chart data.
+ */
 async function fetchJSON(url: string): Promise<any> {
   try {
     const res = await fetch(url, {
@@ -12,10 +20,12 @@ async function fetchJSON(url: string): Promise<any> {
         Accept: "application/json",
       },
     });
+
     if (!res.ok) {
       console.warn(`Yahoo HTTP ${res.status} for ${url}`);
       return null;
     }
+
     return await res.json();
   } catch (err) {
     console.warn("Yahoo fetch error:", err);
@@ -28,11 +38,15 @@ function isValidPrice(x: unknown): x is number {
 }
 
 export async function fetchYahooOHLC(ticker: string): Promise<OHLC | null> {
+  const range = "1y";
+  const interval = "1d";
+
   const url =
     `${BASE}/${encodeURIComponent(ticker)}` +
-    `?range=1y&interval=1d&includePrePost=false&events=history`;
+    `?range=${range}&interval=${interval}&includePrePost=false&events=history`;
 
   const data = await fetchJSON(url);
+
   if (!data?.chart?.result?.[0]) {
     console.warn("Yahoo returned invalid chart:", data);
     return null;
@@ -62,15 +76,13 @@ export async function fetchYahooOHLC(ticker: string): Promise<OHLC | null> {
 
   for (let i = 0; i < timestamps.length; i++) {
     const close = closes[i];
-    const high = highs[i];
-    const low = lows[i];
-    // Require valid close; use close as fallback for missing OH
     if (!isValidPrice(close)) continue;
 
     const oi = isValidPrice(opens[i]) ? opens[i] : close;
-    const hi = isValidPrice(high) ? high : close;
-    const lo = isValidPrice(low) ? low : close;
-    const vol = Number.isFinite(volumes[i]) && volumes[i] >= 0 ? volumes[i] : 0;
+    const hi = isValidPrice(highs[i]) ? highs[i] : close;
+    const lo = isValidPrice(lows[i]) ? lows[i] : close;
+    const vol =
+      Number.isFinite(volumes[i]) && volumes[i] >= 0 ? Number(volumes[i]) : 0;
 
     t.push(timestamps[i]);
     o.push(oi);
@@ -91,7 +103,9 @@ export async function fetchYahooOHLC(ticker: string): Promise<OHLC | null> {
 export async function fetchYahooQuote(ticker: string): Promise<number> {
   const url =
     `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(ticker)}`;
+
   const data = await fetchJSON(url);
+
   try {
     const price = data?.quoteResponse?.result?.[0]?.regularMarketPrice;
     return Number.isFinite(price) && price > 0 ? price : 0;
