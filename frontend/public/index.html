@@ -207,13 +207,54 @@
         showError("Please enter a ticker symbol");
         return;
       }
+            <hr />
+      <h3 style="margin: 0 0 8px 0; font-size: 1rem;">Model diagnostics</h3>
+      <div class="grid">
+        <div>
+          <div class="metric-label">Regime</div>
+          <div id="regime" class="metric-value"></div>
+        </div>
+        <div>
+          <div class="metric-label">Ψ (psi)</div>
+          <div id="psi" class="metric-value"></div>
+        </div>
+        <div>
+          <div class="metric-label">CTR-A</div>
+          <div id="ctmu" class="metric-value"></div>
+        </div>
+        <div>
+          <div class="metric-label">Hurst</div>
+          <div id="hurst" class="metric-value"></div>
+        </div>
+        <div>
+          <div class="metric-label">Vol (ATR/price)</div>
+          <div id="garchVol" class="metric-value"></div>
+        </div>
+        <div>
+          <div class="metric-label">Signal quality</div>
+          <div id="signalQuality" class="metric-value"></div>
+        </div>
+      </div>
 
-      const btn = document.getElementById("analyzeBtn");
+          const btn = document.getElementById("analyzeBtn");
       btn.disabled = true;
       document.getElementById("loading").classList.remove("hidden");
       document.getElementById("predictionCard").classList.add("hidden");
       document.getElementById("errorCard").classList.add("hidden");
       document.getElementById("status").textContent = "● Loading...";
+            document.getElementById("regime").textContent = p.regime || "—";
+      document.getElementById("psi").textContent =
+        typeof p.psi === "number" ? p.psi.toFixed(3) : "—";
+      document.getElementById("ctmu").textContent =
+        typeof p.ctmu === "number" ? p.ctmu.toFixed(3) : "—";
+      document.getElementById("hurst").textContent =
+        typeof p.hurst === "number" ? p.hurst.toFixed(3) : "—";
+      document.getElementById("garchVol").textContent =
+        typeof p.garchVol === "number"
+          ? (p.garchVol * 100).toFixed(2) + "%"
+          : "—";
+      document.getElementById("signalQuality").textContent =
+        Math.round((p.signalQuality ?? p.confidence ?? 0) * 100) + "%";
 
       try {
         const res = await fetch(API_BASE + "/predict", {
@@ -224,6 +265,11 @@
 
         const data = await res.json();
 
+              if (!p.entryPrice || p.entryPrice === 0) {
+        showError(p.rationale || "No usable market data for this ticker");
+        document.getElementById("predictionCard").classList.add("hidden");
+        return;
+      }
         if (!res.ok) {
           throw new Error(data.error || data.message || "HTTP " + res.status);
         }
