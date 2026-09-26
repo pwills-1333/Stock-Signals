@@ -8,13 +8,9 @@ import { checkRateLimit } from "./rateLimit.ts";
 const app = new Application();
 const router = new Router();
 
-const ALLOWED_ORIGINS = [
-  "http://localhost:3000",
-  "http://127.0.0.1:3000",
-  // "https://your-frontend.up.railway.app",
-];
-
-function getClientIp(ctx: { request: { headers: Headers; ip: string } }): string {
+function getClientIp(ctx: {
+  request: { headers: Headers; ip: string };
+}): string {
   const forwarded = ctx.request.headers.get("x-forwarded-for");
   if (forwarded) return forwarded.split(",")[0].trim();
   return ctx.request.ip || "unknown";
@@ -50,9 +46,19 @@ router.post("/predict", async (ctx) => {
   }
 
   try {
-    const body = await ctx.request.body.json();
-    const ticker = (body.ticker || "").toString().trim();
+    let body: Record<string, unknown> = {};
+    try {
+      body = await ctx.request.body.json();
+    } catch {
+      ctx.response.status = 400;
+      ctx.response.body = {
+        error: "Invalid JSON body",
+        message: "Request body must be valid JSON",
+      };
+      return;
+    }
 
+    const ticker = String(body.ticker ?? "").trim();
     if (!ticker) {
       ctx.response.status = 400;
       ctx.response.body = { error: "ticker is required" };
@@ -60,7 +66,19 @@ router.post("/predict", async (ctx) => {
     }
 
     const horizonDays = Number(body.horizonDays) || 14;
-    ctx.response.body = await predict({ ticker, horizonDays });
+    const result = await predict({ ticker, horizonDays });
+
+    // Empty / failed analysis → 422 so clients distinguish from success
+    if (!result.entryPrice || result.entryPrice === 0) {
+      ctx.response.status = 422;
+      ctx.response.body = {
+        error: result.rationale || "No usable market data for this ticker",
+        ...result,
+      };
+      return;
+    }
+
+    ctx.response.body = result;
   } catch (err) {
     console.error("Prediction error:", err);
     ctx.response.status = 500;
@@ -85,7 +103,18 @@ router.post("/screen", async (ctx) => {
   }
 
   try {
-    const body = await ctx.request.body.json();
+    let body: Record<string, unknown> = {};
+    try {
+      body = await ctx.request.body.json();
+    } catch {
+      ctx.response.status = 400;
+      ctx.response.body = {
+        error: "Invalid JSON body",
+        message: "Request body must be valid JSON",
+      };
+      return;
+    }
+
     const universe = Array.isArray(body.universe) ? body.universe : [];
     const limitN = Math.min(Number(body.limit) || 10, 50);
     const horizonDays = Number(body.horizonDays) || 14;
@@ -96,8 +125,11 @@ router.post("/screen", async (ctx) => {
       return;
     }
 
+    // Cap universe size to protect rate limits / latency
+    const capped = universe.slice(0, 30);
+
     ctx.response.body = await screenUniverse({
-      universe,
+      universe: capped,
       limit: limitN,
       horizonDays,
     });
