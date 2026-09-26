@@ -104,3 +104,7 @@ export async function fetchFinnhubNews(ticker: string): Promise<any[]> {
     source: n.source ?? ""
   }));
 }
+
+  const t: number[] = [];
+  const o: number[] = [];
+  // ... same loop pattern as Yahoo: only push if c[i] > 0
