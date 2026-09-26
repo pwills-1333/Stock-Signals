@@ -192,22 +192,6 @@
 
       <hr />
 
-      <h3 style="margin: 0 0 8px 0; font-size: 1rem;">Rationale</h3>
-      <div id="rationale" class="rationale"></div>
-    </div>
-  </div>
-
-  <script>
-    const API_BASE = "https://stock-signals-production-3e18.up.railway.app";
-
-    async function loadTicker() {
-      const input = document.getElementById("tickerInput");
-      const ticker = input.value.trim().toUpperCase();
-      if (!ticker) {
-        showError("Please enter a ticker symbol");
-        return;
-      }
-            <hr />
       <h3 style="margin: 0 0 8px 0; font-size: 1rem;">Model diagnostics</h3>
       <div class="grid">
         <div>
@@ -236,25 +220,30 @@
         </div>
       </div>
 
-          const btn = document.getElementById("analyzeBtn");
+      <hr />
+
+      <h3 style="margin: 0 0 8px 0; font-size: 1rem;">Rationale</h3>
+      <div id="rationale" class="rationale"></div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = "https://stock-signals-production-3e18.up.railway.app";
+
+    async function loadTicker() {
+      const input = document.getElementById("tickerInput");
+      const ticker = input.value.trim().toUpperCase();
+      if (!ticker) {
+        showError("Please enter a ticker symbol");
+        return;
+      }
+
+      const btn = document.getElementById("analyzeBtn");
       btn.disabled = true;
       document.getElementById("loading").classList.remove("hidden");
       document.getElementById("predictionCard").classList.add("hidden");
       document.getElementById("errorCard").classList.add("hidden");
       document.getElementById("status").textContent = "● Loading...";
-            document.getElementById("regime").textContent = p.regime || "—";
-      document.getElementById("psi").textContent =
-        typeof p.psi === "number" ? p.psi.toFixed(3) : "—";
-      document.getElementById("ctmu").textContent =
-        typeof p.ctmu === "number" ? p.ctmu.toFixed(3) : "—";
-      document.getElementById("hurst").textContent =
-        typeof p.hurst === "number" ? p.hurst.toFixed(3) : "—";
-      document.getElementById("garchVol").textContent =
-        typeof p.garchVol === "number"
-          ? (p.garchVol * 100).toFixed(2) + "%"
-          : "—";
-      document.getElementById("signalQuality").textContent =
-        Math.round((p.signalQuality ?? p.confidence ?? 0) * 100) + "%";
 
       try {
         const res = await fetch(API_BASE + "/predict", {
@@ -265,13 +254,14 @@
 
         const data = await res.json();
 
-              if (!p.entryPrice || p.entryPrice === 0) {
-        showError(p.rationale || "No usable market data for this ticker");
-        document.getElementById("predictionCard").classList.add("hidden");
-        return;
-      }
         if (!res.ok) {
           throw new Error(data.error || data.message || "HTTP " + res.status);
+        }
+
+        if (!data.entryPrice || data.entryPrice === 0) {
+          showError(data.rationale || "No usable market data for this ticker");
+          document.getElementById("status").textContent = "● Error";
+          return;
         }
 
         renderPrediction(data);
@@ -295,12 +285,9 @@
       document.getElementById("predictionCard").classList.remove("hidden");
 
       const fmt = (v) =>
-        typeof v === "number" && !isNaN(v)
-          ? "$" + v.toFixed(2)
-          : "—";
+        typeof v === "number" && !isNaN(v) ? "$" + v.toFixed(2) : "—";
 
       document.getElementById("tickerName").textContent = p.ticker || "—";
-
       document.getElementById("currentPrice").textContent = fmt(p.entryPrice);
       document.getElementById("predictedPrice").textContent = fmt(p.predictedPrice);
 
@@ -311,7 +298,6 @@
 
       document.getElementById("confidence").textContent =
         Math.round((p.confidence ?? 0) * 100) + "%";
-
       document.getElementById("tradeGrade").textContent =
         (p.tradeGrade ?? 0).toFixed(3);
 
@@ -323,9 +309,22 @@
 
       document.getElementById("stopLoss").textContent = fmt(p.stopLoss);
       document.getElementById("takeProfit").textContent = fmt(p.takeProfit);
-
       document.getElementById("kellyPct").textContent =
         ((p.kellyPct ?? 0) * 100).toFixed(1) + "%";
+
+      document.getElementById("regime").textContent = p.regime || "—";
+      document.getElementById("psi").textContent =
+        typeof p.psi === "number" ? p.psi.toFixed(3) : "—";
+      document.getElementById("ctmu").textContent =
+        typeof p.ctmu === "number" ? p.ctmu.toFixed(3) : "—";
+      document.getElementById("hurst").textContent =
+        typeof p.hurst === "number" ? p.hurst.toFixed(3) : "—";
+      document.getElementById("garchVol").textContent =
+        typeof p.garchVol === "number"
+          ? (p.garchVol * 100).toFixed(2) + "%"
+          : "—";
+      document.getElementById("signalQuality").textContent =
+        Math.round((p.signalQuality ?? p.confidence ?? 0) * 100) + "%";
 
       document.getElementById("rationale").textContent =
         p.rationale || "Analysis complete.";
