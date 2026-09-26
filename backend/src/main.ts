@@ -153,10 +153,7 @@ const ALLOWED_ORIGINS = new Set([
 
 app.use(
   oakCors({
-    origin: (requestOrigin) => {
-      if (!requestOrigin) return true; // curl / same-origin tools
-      return ALLOWED_ORIGINS.has(requestOrigin);
-    },
+    origin: "*",
     methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type"],
     optionsSuccessStatus: 200,
