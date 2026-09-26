@@ -4,6 +4,8 @@ import { fetchFinnhubOHLC } from "./data/finnhub.ts";
 import { fetchYahooOHLC } from "./data/yahoo.ts";
 import { getCachedOHLC, setCachedOHLC } from "./cache.ts";
 
+const MIN_BARS = 50;
+
 /**
  * Primary: Finnhub
  * Fallback: Yahoo Finance
@@ -12,16 +14,14 @@ import { getCachedOHLC, setCachedOHLC } from "./cache.ts";
 export async function fetchOHLC(ticker: string): Promise<OHLC | null> {
   const symbol = ticker.toUpperCase().trim();
 
-  // Check cache first
   const cached = getCachedOHLC(symbol);
-  if (cached) {
+  if (cached && cached.c.length >= MIN_BARS) {
     return cached;
   }
 
-  // 1. Try Finnhub
   try {
     const finnhub = await fetchFinnhubOHLC(symbol);
-    if (finnhub && finnhub.c.length >= 30) {
+    if (finnhub && finnhub.c.length >= MIN_BARS) {
       setCachedOHLC(symbol, finnhub);
       return finnhub;
     }
@@ -29,10 +29,9 @@ export async function fetchOHLC(ticker: string): Promise<OHLC | null> {
     console.warn("Finnhub failed:", err);
   }
 
-  // 2. Fallback to Yahoo
   try {
     const yahoo = await fetchYahooOHLC(symbol);
-    if (yahoo && yahoo.c.length >= 30) {
+    if (yahoo && yahoo.c.length >= MIN_BARS) {
       setCachedOHLC(symbol, yahoo);
       return yahoo;
     }
