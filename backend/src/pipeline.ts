@@ -1,173 +1,41 @@
-// backend/src/pipeline.ts
-import type { OHLC, Prediction, Regime } from "./types.ts";
-import { fetchOHLC } from "./data.ts";
-import { buildFeatures } from "./mlFeatures.ts";
-import { loadAllArtifacts } from "../artifacts/multiArtifacts.ts";
-import { runAllHeads, aggregateHeads } from "./trainedModels.ts";
-import {
-  detectRegime,
-  weightHeadsByRegime,
-  applyHeadWeights,
-} from "./regimeSelector.ts";
-import { computeFractalSignal } from "./fractal.ts";
-import { atr } from "./stats.ts";
-import { computeAdaptivePsi } from "./psi/adaptivePsi.ts";
-import { computeCtrA } from "./ctmu/ctrA.ts";
+  // 9. Final signal blending — do NOT mix CTR-A into return scale
+  // Use CTR-A as a small bias and as a confidence gate
+  const ctrA = ctrAOut.ctrA; // [-1, 1]
+  const psiGrade = psiOut.grade; // [0, 1]
 
-export async function predict(input: {
-  ticker: string;
-  horizonDays?: number;
-}): Promise<Prediction> {
-  const ticker = (input.ticker || "").toUpperCase().trim();
-  const horizonDays = input.horizonDays ?? 14;
+  // Mild directional bias from CTR-A (scaled as return contribution, capped)
+  const ctrAReturnBias = Math.max(-0.05, Math.min(0.05, ctrA * 0.03));
+  expectedReturn = expectedReturn + ctrAReturnBias;
 
-  // 1. Fetch data
-  const ohlc: OHLC | null = await fetchOHLC(ticker);
-  if (!ohlc || ohlc.c.length < 50) {
-    return createEmptyPrediction(ticker, horizonDays, "Insufficient data");
-  }
-
-  const closes = ohlc.c;
-  const entryPrice = closes[closes.length - 1];
-
-  // 2. Features
-  const features = buildFeatures(ohlc);
-
-  // 3. Load models
-  const artifact = await loadAllArtifacts("artifacts");
-  if (!artifact || !artifact.heads?.length) {
-    return createEmptyPrediction(ticker, horizonDays, "No model artifacts found");
-  }
-
-  // 4. Run all heads
-  const headOutputs = runAllHeads(artifact, features);
-  const rawAgg = aggregateHeads(headOutputs);
-
-  // 5. Real market regime inputs
-  const fractal = computeFractalSignal(closes);
-  const atr14 = atr(ohlc.h, ohlc.l, ohlc.c, 14);
-  const volatility = entryPrice > 0 ? atr14 / entryPrice : 0;
-
-  const regimeInputs = {
-    expectedReturn: rawAgg.expectedReturn,
-    confidence: rawAgg.confidence,
-    hurst: fractal.hurst,
-    volatility,
-    chaos: fractal.chaos ? 0.6 : 0.1,
-    ctrA: rawAgg.expectedReturn, // will be refined below
-  };
-
-  const regime = detectRegime(regimeInputs) as Regime;
-
-  // 6. Regime-weighted aggregation
-  const weights = weightHeadsByRegime(regime, artifact.heads);
-  const weightedOutputs = applyHeadWeights(headOutputs, weights);
-  const agg = aggregateHeads(weightedOutputs);
-
-  let expectedReturn = agg.expectedReturn;
-  let confidence = agg.confidence;
-  let signal = agg.signal;
-
-  // 7. Adaptive Ψ
-  const psiOut = computeAdaptivePsi({
-    expectedReturn,
-    confidence,
-    volatility,
-    closes,
-  });
-
-  // 8. CTR-A
-  const ctrAOut = computeCtrA({
-    closes,
-    expectedReturn,
-    confidence,
-    psi: psiOut.psi,
-  });
-
-  // 9. Final signal blending (Ψ + CTR-A influence)
-  // Mildly adjust expected return and confidence
-  expectedReturn = expectedReturn * 0.7 + ctrAOut.ctrA * 0.3;
-  confidence = Math.min(1, confidence * 0.6 + psiOut.grade * 0.4);
+  // Confidence: ensemble + Ψ grade, lightly gated by |CTR-A| stability
+  const stabilityBoost = 0.85 + 0.15 * Math.min(1, Math.abs(ctrAOut.stability ?? 0.5));
+  confidence = Math.min(
+    1,
+    Math.max(0, (confidence * 0.55 + psiGrade * 0.45) * stabilityBoost),
+  );
 
   if (psiOut.signal === "buy" && signal === "neutral") signal = "buy";
   if (psiOut.signal === "sell" && signal === "neutral") signal = "sell";
+  if (!(entryPrice > 0)) {
+    return createEmptyPrediction(ticker, horizonDays, "Invalid last price");
+  }
 
-  // 10. Risk levels (ATR-based instead of fixed 5%)
-  const atrMult = Math.max(volatility, 0.01);
-  const stopLoss = entryPrice * (1 - 1.8 * atrMult);
-  const takeProfit = entryPrice * (1 + 2.5 * atrMult);
+  // Clamp expected return to a sane range for a 14d horizon
+  expectedReturn = Math.max(-0.25, Math.min(0.25, expectedReturn));
 
-  // Kelly (very conservative)
-  const kellyPct = Math.max(
-    0,
-    Math.min(0.25, expectedReturn * confidence * 0.5),
-  );
+  // 10. ATR-based risk
+  const atrMult = Math.max(volatility, 0.008); // floor ~0.8% daily ATR/price
+  const stopLoss =
+    signal === "sell"
+      ? entryPrice * (1 + 1.8 * atrMult) // stop above for short-style
+      : entryPrice * (1 - 1.8 * atrMult);
+  const takeProfit =
+    signal === "sell"
+      ? entryPrice * (1 - 2.5 * atrMult)
+      : entryPrice * (1 + 2.5 * atrMult);
+
+  // Kelly: use absolute edge for sizing magnitude; sign follows signal
+  const edge = Math.abs(expectedReturn) * confidence;
+  const kellyPct = Math.max(0, Math.min(0.25, edge * 0.5));
 
   const predictedPrice = entryPrice * (1 + expectedReturn);
-
-  return {
-    ticker,
-    assetType: "equity",
-    horizonDays,
-    entryPrice,
-    predictedPrice,
-    expectedReturn,
-    confidence,
-    signal,
-    tradeGrade: psiOut.grade,
-    signalQuality: confidence,
-    regime,
-    ctmu: ctrAOut.ctrA,
-    psi: psiOut.psi,
-    bayes: expectedReturn * confidence,
-    ensemble: expectedReturn,
-    mc: expectedReturn,
-    garchVol: volatility,
-    hurst: fractal.hurst,
-    stopLoss,
-    takeProfit,
-    kellyPct,
-    rationale: `Regime: ${regime} | Ψ: ${psiOut.psi.toFixed(3)} | CTR-A: ${ctrAOut.ctrA.toFixed(3)} | Fractal Hurst: ${fractal.hurst.toFixed(3)}`,
-    resolved: false,
-    horizonEndDate: new Date(
-      Date.now() + horizonDays * 86_400_000,
-    ).toISOString(),
-    createdAt: new Date().toISOString(),
-  };
-}
-
-function createEmptyPrediction(
-  ticker: string,
-  horizonDays: number,
-  rationale: string,
-): Prediction {
-  return {
-    ticker,
-    assetType: "equity",
-    horizonDays,
-    entryPrice: 0,
-    predictedPrice: 0,
-    expectedReturn: 0,
-    confidence: 0,
-    signal: "neutral",
-    tradeGrade: 0,
-    signalQuality: 0,
-    regime: "neutral",
-    ctmu: 0,
-    psi: 0,
-    bayes: 0,
-    ensemble: 0,
-    mc: 0,
-    garchVol: 0,
-    hurst: 0.5,
-    stopLoss: 0,
-    takeProfit: 0,
-    kellyPct: 0,
-    rationale,
-    resolved: false,
-    horizonEndDate: new Date(
-      Date.now() + horizonDays * 86_400_000,
-    ).toISOString(),
-    createdAt: new Date().toISOString(),
-  };
-}
