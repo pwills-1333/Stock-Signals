@@ -143,9 +143,20 @@ router.post("/screen", async (ctx) => {
   }
 });
 
+const ALLOWED_ORIGINS = new Set([
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "http://localhost:8080",
+  // Add your real frontend URL(s):
+  // "https://your-frontend.example.com",
+]);
+
 app.use(
   oakCors({
-    origin: "*",
+    origin: (requestOrigin) => {
+      if (!requestOrigin) return true; // curl / same-origin tools
+      return ALLOWED_ORIGINS.has(requestOrigin);
+    },
     methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type"],
     optionsSuccessStatus: 200,
