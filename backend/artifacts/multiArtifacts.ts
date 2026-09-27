@@ -13,9 +13,8 @@ import {
 } from "./stats.ts";
 
 /**
- * Build a 20-dim feature vector in roughly comparable units.
- * Price-level features are divided by last close so ridge heads
- * output values closer to return-scale (not dollar-scale).
+ * Same feature layout as before (20 dims), but price-level
+ * inputs are divided by last close so heads stay in return-like units.
  */
 export function buildFeatures(ohlc: OHLC): number[] {
   const { c, h, l } = ohlc;
@@ -53,22 +52,11 @@ export function buildFeatures(ohlc: OHLC): number[] {
 
   const volRatio = vol50 > 0 ? clamp(vol20 / vol50, 0, 5) : 1;
 
-  // MACD hist as fraction of price; SMA gaps as fraction of price
-  const macdHistPct = macdObj.hist / px;
-  const sma20_50 = (sma(closes, 20) - sma(closes, 50)) / px;
-  const sma50_200 = (sma(closes, 50) - sma(closes, 200)) / px;
-  const atrPct = atr14 / px;
-  const bbPct = bbWidth20 / px; // if bbWidth is absolute; if already relative this stays small
-
-  const d1 = n > 1 ? (closes[n - 1] - closes[n - 2]) / px : 0;
-  const d5 = n > 5 ? (closes[n - 1] - closes[Math.max(0, n - 6)]) / px : 0;
-  const d10 = n > 10 ? (closes[n - 1] - closes[Math.max(0, n - 11)]) / px : 0;
-
   const features = [
     safe(rsi14 / 100),
-    safe(macdHistPct),
-    safe(sma20_50),
-    safe(sma50_200),
+    safe(macdObj.hist / px),
+    safe((sma(closes, 20) - sma(closes, 50)) / px),
+    safe((sma(closes, 50) - sma(closes, 200)) / px),
     safe(mom5),
     safe(mom10),
     safe(mom20),
@@ -76,15 +64,19 @@ export function buildFeatures(ohlc: OHLC): number[] {
     safe(volRatio),
     safe(ac1),
     safe(ac5),
-    safe(atrPct),
-    safe(bbPct),
+    safe(atr14 / px),
+    safe(bbWidth20 / px),
     safe(std(rets)),
     safe(rets.slice(-1)[0] ?? 0),
     safe(rets.slice(-5).reduce((a, b) => a + b, 0)),
     safe(rets.slice(-10).reduce((a, b) => a + b, 0)),
-    safe(d1),
-    safe(d5),
-    safe(d10),
+    safe((closes[n - 1] - closes[Math.max(0, n - 2)]) / px),
+    safe((closes[n - 1] - closes[Math.max(0, n - 6)]) / px),
+    safe((closes[n - 1] - closes[Math.max(0, n - 11)]) / px),
+  ];
+
+  return features.map((x) => (Number.isFinite(x) ? x : 0));
+}
   ];
 
   return features.map((x) => (Number.isFinite(x) ? x : 0));
