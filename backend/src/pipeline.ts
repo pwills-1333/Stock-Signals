@@ -21,7 +21,6 @@ export async function predict(input: {
   const ticker = (input.ticker || "").toUpperCase().trim();
   const horizonDays = input.horizonDays ?? 14;
 
-  // 1. Fetch data
   const ohlc: OHLC | null = await fetchOHLC(ticker);
   if (!ohlc || ohlc.c.length < 50) {
     return createEmptyPrediction(ticker, horizonDays, "Insufficient data");
@@ -34,10 +33,8 @@ export async function predict(input: {
     return createEmptyPrediction(ticker, horizonDays, "Invalid last price");
   }
 
-  // 2. Features
   const features = buildFeatures(ohlc);
 
-  // 3. Load models
   const artifact = await loadAllArtifacts("artifacts");
   if (!artifact || !artifact.heads?.length) {
     return createEmptyPrediction(
@@ -47,11 +44,9 @@ export async function predict(input: {
     );
   }
 
-  // 4. Run all heads
   const headOutputs = runAllHeads(artifact, features);
   const rawAgg = aggregateHeads(headOutputs);
 
-  // 5. Real market regime inputs
   const fractal = computeFractalSignal(closes);
   const atr14 = atr(ohlc.h, ohlc.l, ohlc.c, 14);
   const volatility = entryPrice > 0 ? atr14 / entryPrice : 0;
@@ -62,12 +57,11 @@ export async function predict(input: {
     hurst: fractal.hurst,
     volatility,
     chaos: fractal.chaos ? 0.6 : 0.1,
-    ctrA: rawAgg.expectedReturn, // refined after CTR-A below
+    ctrA: rawAgg.expectedReturn,
   };
 
   const regime = detectRegime(regimeInputs) as Regime;
 
-  // 6. Regime-weighted aggregation
   const weights = weightHeadsByRegime(regime, artifact.heads);
   const weightedOutputs = applyHeadWeights(headOutputs, weights);
   const agg = aggregateHeads(weightedOutputs);
@@ -76,7 +70,6 @@ export async function predict(input: {
   let confidence = agg.confidence;
   let signal = agg.signal;
 
-  // 7. Adaptive Ψ
   const psiOut = computeAdaptivePsi({
     expectedReturn,
     confidence,
@@ -84,7 +77,6 @@ export async function predict(input: {
     closes,
   });
 
-  // 8. CTR-A
   const ctrAOut = computeCtrA({
     closes,
     expectedReturn,
@@ -92,15 +84,12 @@ export async function predict(input: {
     psi: psiOut.psi,
   });
 
-  // 9. Final blending — do NOT mix CTR-A ([-1,1] score) into return scale
   const ctrA = ctrAOut.ctrA;
   const psiGrade = psiOut.grade;
 
-  // Small directional bias from CTR-A (capped as a return contribution)
   const ctrAReturnBias = Math.max(-0.05, Math.min(0.05, ctrA * 0.03));
   expectedReturn = expectedReturn + ctrAReturnBias;
 
-  // Confidence: ensemble + Ψ grade, lightly gated by stability
   const stabilityBoost =
     0.85 + 0.15 * Math.min(1, Math.abs(ctrAOut.stability ?? 0.5));
   confidence = Math.min(
@@ -111,10 +100,9 @@ export async function predict(input: {
   if (psiOut.signal === "buy" && signal === "neutral") signal = "buy";
   if (psiOut.signal === "sell" && signal === "neutral") signal = "sell";
 
-  // Clamp expected return for a ~14d horizon
-  expectedReturn = Math.max(-0.25, Math.min(0.25, expectedReturn));
+  // Light rail — values already return-scaled in aggregateHeads
+  expectedReturn = Math.max(-0.15, Math.min(0.15, expectedReturn));
 
-  // 10. ATR-based risk (direction-aware)
   const atrMult = Math.max(volatility, 0.008);
   const stopLoss =
     signal === "sell"
@@ -125,7 +113,6 @@ export async function predict(input: {
       ? entryPrice * (1 - 2.5 * atrMult)
       : entryPrice * (1 + 2.5 * atrMult);
 
-  // Kelly: magnitude from |edge|; direction is signal
   const edge = Math.abs(expectedReturn) * confidence;
   const kellyPct = Math.max(0, Math.min(0.25, edge * 0.5));
 
