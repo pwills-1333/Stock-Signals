@@ -1,17 +1,12 @@
 // backend/src/trainedModels.ts
 import type { ModelArtifact, ModelHead } from "./types.ts";
 
-/** Typical |14d equity move| ceiling for display / sizing */
-const MAX_ABS_RETURN = 0.12;
-
-/**
- * Map unbounded ridge score → expected return in (-MAX, +MAX).
- * Soft linear region near 0; saturates for extreme scores.
- */
-function scoreToReturn(score: number): number {
+/** Soft map ridge score → ~14d expected return (keeps sign & rank of heads). */
+function scoreToExpectedReturn(score: number): number {
   if (!Number.isFinite(score)) return 0;
-  // Soft calibration: score ~0.05 → ~2% return; large scores approach ±12%
-  return MAX_ABS_RETURN * Math.tanh(score / 0.08);
+  // Typical head intercepts ~0.01–0.03; after price-norm, scores stay moderate.
+  // tanh keeps extremes from becoming fake ±25% prints.
+  return 0.12 * Math.tanh(score / 0.06);
 }
 
 export function runRidgeHead(head: ModelHead, features: number[]): number {
@@ -45,9 +40,6 @@ export function runAllHeads(
   }));
 }
 
-/**
- * Average head scores, then convert once into expected-return units.
- */
 export function aggregateHeads(
   results: { name: string; output: number }[],
 ): {
@@ -62,10 +54,10 @@ export function aggregateHeads(
   const avgScore =
     results.reduce((sum, r) => sum + (r.output ?? 0), 0) / results.length;
 
-  const expectedReturn = scoreToReturn(avgScore);
+  const expectedReturn = scoreToExpectedReturn(avgScore);
 
-  // Confidence from how decisive the score is (before return mapping)
-  const confidence = Math.min(1, Math.abs(avgScore) / 0.08);
+  // Confidence from score strength (same idea as before, not from |return|)
+  const confidence = Math.min(1, Math.abs(avgScore) / 0.06);
 
   let signal: "buy" | "sell" | "neutral" = "neutral";
   if (expectedReturn > 0.01) signal = "buy";
