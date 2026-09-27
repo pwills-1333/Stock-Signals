@@ -1,107 +1,91 @@
-// backend/artifacts/multiArtifacts.ts
-import type { ModelArtifact, ModelHead } from "../src/types.ts";
+// backend/src/mlFeatures.ts
+import { OHLC } from "./types.ts";
 import {
-  join,
-  dirname,
-  fromFileUrl,
-} from "https://deno.land/std@0.224.0/path/mod.ts";
-
-let cachedArtifact: ModelArtifact | null = null;
-
-async function loadJSON(path: string): Promise<any | null> {
-  try {
-    const raw = await Deno.readTextFile(path);
-    return JSON.parse(raw);
-  } catch (err) {
-    console.error(`Failed to load artifact ${path}:`, err);
-    return null;
-  }
-}
-
-function resolveArtifactsDir(dir: string): string {
-  if (dir.startsWith("/") || /^[A-Za-z]:[\\/]/.test(dir)) {
-    return dir;
-  }
-
-  try {
-    const here = dirname(fromFileUrl(import.meta.url));
-    // multiArtifacts.ts lives inside backend/artifacts/
-    return join(here, dir === "artifacts" ? "." : dir);
-  } catch {
-    return dir;
-  }
-}
+  sma,
+  logReturns,
+  autocorrelation,
+  std,
+  rsi,
+  macd,
+  atr,
+  bollingerWidth,
+  clamp,
+} from "./stats.ts";
 
 /**
- * Loads every *.json file in the artifacts directory and merges all heads
- * into a single ModelArtifact. Cached after first successful load.
+ * Build a 20-dim feature vector in roughly comparable units.
+ * Price-level features are divided by last close so ridge heads
+ * output values closer to return-scale (not dollar-scale).
  */
-export async function loadAllArtifacts(
-  dir = "artifacts",
-): Promise<ModelArtifact> {
-  if (cachedArtifact && cachedArtifact.heads.length > 0) {
-    return cachedArtifact;
-  }
+export function buildFeatures(ohlc: OHLC): number[] {
+  const { c, h, l } = ohlc;
+  const closes = c;
+  const n = closes.length;
+  const px = closes[n - 1] > 0 ? closes[n - 1] : 1;
 
-  const resolved = resolveArtifactsDir(dir);
-  const entries: string[] = [];
+  const safe = (x: number) => (Number.isFinite(x) ? x : 0);
 
-  console.log(`Loading artifacts from: ${resolved} (cwd=${Deno.cwd()})`);
+  const rets = logReturns(closes);
+  const vol20 = std(rets.slice(-20));
+  const vol50 = std(rets.slice(-50));
 
-  try {
-    for await (const file of Deno.readDir(resolved)) {
-      if (file.isFile && file.name.endsWith(".json")) {
-        entries.push(join(resolved, file.name));
-      }
-    }
-  } catch (err) {
-    console.error("Cannot read artifacts directory:", resolved, err);
-    return { version: "empty", feature_count: 0, heads: [] };
-  }
+  const rsi14 = rsi(closes, 14);
+  const macdObj = macd(closes);
 
-  const allHeads: ModelHead[] = [];
-  let featureCount = 0;
-  let version = "multi-artifact";
+  const ac1 = autocorrelation(rets, 1);
+  const ac5 = autocorrelation(rets, 5);
 
-  for (const filePath of entries) {
-    const data = await loadJSON(filePath);
-    if (!data || !Array.isArray(data.heads)) continue;
+  const atr14 = atr(h, l, c, 14);
+  const bbWidth20 = bollingerWidth(closes, 20);
 
-    if (featureCount === 0 && typeof data.feature_count === "number") {
-      featureCount = data.feature_count;
-    }
-    if (data.version) {
-      version = String(data.version);
-    }
+  const mom5 =
+    n > 5 && closes[n - 6] > 0
+      ? (closes[n - 1] - closes[n - 6]) / closes[n - 6]
+      : 0;
+  const mom10 =
+    n > 10 && closes[n - 11] > 0
+      ? (closes[n - 1] - closes[n - 11]) / closes[n - 11]
+      : 0;
+  const mom20 =
+    n > 20 && closes[n - 21] > 0
+      ? (closes[n - 1] - closes[n - 21]) / closes[n - 21]
+      : 0;
 
-    for (const head of data.heads) {
-      if (!head) continue;
-      allHeads.push({
-        name: head.name ?? "unnamed",
-        coef: Array.isArray(head.coef) ? head.coef.map(Number) : [],
-        intercept: Number.isFinite(head.intercept) ? Number(head.intercept) : 0,
-      });
-    }
-  }
+  const volRatio = vol50 > 0 ? clamp(vol20 / vol50, 0, 5) : 1;
 
-  console.log(
-    `Loaded ${allHeads.length} heads from ${entries.length} artifact files in ${resolved}`,
-  );
+  // MACD hist as fraction of price; SMA gaps as fraction of price
+  const macdHistPct = macdObj.hist / px;
+  const sma20_50 = (sma(closes, 20) - sma(closes, 50)) / px;
+  const sma50_200 = (sma(closes, 50) - sma(closes, 200)) / px;
+  const atrPct = atr14 / px;
+  const bbPct = bbWidth20 / px; // if bbWidth is absolute; if already relative this stays small
 
-  const artifact: ModelArtifact = {
-    version,
-    feature_count: featureCount,
-    heads: allHeads,
-  };
+  const d1 = n > 1 ? (closes[n - 1] - closes[n - 2]) / px : 0;
+  const d5 = n > 5 ? (closes[n - 1] - closes[Math.max(0, n - 6)]) / px : 0;
+  const d10 = n > 10 ? (closes[n - 1] - closes[Math.max(0, n - 11)]) / px : 0;
 
-  if (allHeads.length > 0) {
-    cachedArtifact = artifact;
-  }
+  const features = [
+    safe(rsi14 / 100),
+    safe(macdHistPct),
+    safe(sma20_50),
+    safe(sma50_200),
+    safe(mom5),
+    safe(mom10),
+    safe(mom20),
+    safe(vol20),
+    safe(volRatio),
+    safe(ac1),
+    safe(ac5),
+    safe(atrPct),
+    safe(bbPct),
+    safe(std(rets)),
+    safe(rets.slice(-1)[0] ?? 0),
+    safe(rets.slice(-5).reduce((a, b) => a + b, 0)),
+    safe(rets.slice(-10).reduce((a, b) => a + b, 0)),
+    safe(d1),
+    safe(d5),
+    safe(d10),
+  ];
 
-  return artifact;
-}
-
-/** Optional: clear cache after redeploying new model files without restart */
-export function clearArtifactCache(): void {
-  cachedArtifact = null;
+  return features.map((x) => (Number.isFinite(x) ? x : 0));
 }
