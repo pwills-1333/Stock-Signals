@@ -1,9 +1,19 @@
 // backend/src/trainedModels.ts
 import type { ModelArtifact, ModelHead } from "./types.ts";
 
+/** Typical |14d equity move| ceiling for display / sizing */
+const MAX_ABS_RETURN = 0.12;
+
 /**
- * Run a single Ridge head
+ * Map unbounded ridge score → expected return in (-MAX, +MAX).
+ * Soft linear region near 0; saturates for extreme scores.
  */
+function scoreToReturn(score: number): number {
+  if (!Number.isFinite(score)) return 0;
+  // Soft calibration: score ~0.05 → ~2% return; large scores approach ±12%
+  return MAX_ABS_RETURN * Math.tanh(score / 0.08);
+}
+
 export function runRidgeHead(head: ModelHead, features: number[]): number {
   if (!head || !Array.isArray(head.coef) || !Number.isFinite(head.intercept)) {
     return 0;
@@ -23,9 +33,6 @@ export function runRidgeHead(head: ModelHead, features: number[]): number {
   return Number.isFinite(y) ? y : 0;
 }
 
-/**
- * Run every head in the artifact
- */
 export function runAllHeads(
   artifact: ModelArtifact,
   features: number[],
@@ -39,7 +46,7 @@ export function runAllHeads(
 }
 
 /**
- * Simple average aggregation + signal generation
+ * Average head scores, then convert once into expected-return units.
  */
 export function aggregateHeads(
   results: { name: string; output: number }[],
@@ -49,26 +56,20 @@ export function aggregateHeads(
   signal: "buy" | "sell" | "neutral";
 } {
   if (!Array.isArray(results) || results.length === 0) {
-    return {
-      expectedReturn: 0,
-      confidence: 0,
-      signal: "neutral",
-    };
+    return { expectedReturn: 0, confidence: 0, signal: "neutral" };
   }
 
-  const avg =
+  const avgScore =
     results.reduce((sum, r) => sum + (r.output ?? 0), 0) / results.length;
 
-  // Confidence is magnitude of the average (capped at 1)
-  const confidence = Math.min(Math.abs(avg), 1);
+  const expectedReturn = scoreToReturn(avgScore);
+
+  // Confidence from how decisive the score is (before return mapping)
+  const confidence = Math.min(1, Math.abs(avgScore) / 0.08);
 
   let signal: "buy" | "sell" | "neutral" = "neutral";
-  if (avg > 0.015) signal = "buy";
-  if (avg < -0.015) signal = "sell";
+  if (expectedReturn > 0.01) signal = "buy";
+  if (expectedReturn < -0.01) signal = "sell";
 
-  return {
-    expectedReturn: avg,
-    confidence,
-    signal,
-  };
+  return { expectedReturn, confidence, signal };
 }
