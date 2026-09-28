@@ -100,7 +100,7 @@ export async function predict(input: {
   if (psiOut.signal === "buy" && signal === "neutral") signal = "buy";
   if (psiOut.signal === "sell" && signal === "neutral") signal = "sell";
 
-  // Light rail — values already return-scaled in aggregateHeads
+   // Final safety rail – never let expected return explode
   expectedReturn = Math.max(-0.15, Math.min(0.15, expectedReturn));
 
   const atrMult = Math.max(volatility, 0.008);
@@ -113,6 +113,8 @@ export async function predict(input: {
       ? entryPrice * (1 - 2.5 * atrMult)
       : entryPrice * (1 + 2.5 * atrMult);
 
+  // Kelly is a *position size* recommendation, not expected return.
+  // Hard-capped at 25 % of equity for risk control.
   const edge = Math.abs(expectedReturn) * confidence;
   const kellyPct = Math.max(0, Math.min(0.25, edge * 0.5));
 
