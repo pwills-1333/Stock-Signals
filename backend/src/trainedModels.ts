@@ -1,11 +1,14 @@
 // backend/src/trainedModels.ts
 import type { ModelArtifact, ModelHead } from "./types.ts";
 
-/** Soft map ridge score → ~14d expected return (keeps sign & rank of heads). */
+/**
+ * Soft map from raw ridge score → ~14-day expected return.
+ * tanh prevents extreme garbage scores from becoming ±25 % prints.
+ */
 function scoreToExpectedReturn(score: number): number {
   if (!Number.isFinite(score)) return 0;
-  // Typical head intercepts ~0.01–0.03; after price-norm, scores stay moderate.
-  // tanh keeps extremes from becoming fake ±25% prints.
+  // Typical head scores after price-norm stay in a moderate range.
+  // 0.12 * tanh(...) keeps the bulk of mass inside ±8–10 %.
   return 0.12 * Math.tanh(score / 0.06);
 }
 
@@ -56,12 +59,12 @@ export function aggregateHeads(
 
   const expectedReturn = scoreToExpectedReturn(avgScore);
 
-  // Confidence from score strength (same idea as before, not from |return|)
+  // Confidence from magnitude of the raw score (not from |return|)
   const confidence = Math.min(1, Math.abs(avgScore) / 0.06);
 
   let signal: "buy" | "sell" | "neutral" = "neutral";
-  if (expectedReturn > 0.01) signal = "buy";
-  if (expectedReturn < -0.01) signal = "sell";
+  if (expectedReturn > 0.012) signal = "buy";
+  if (expectedReturn < -0.012) signal = "sell";
 
   return { expectedReturn, confidence, signal };
 }
