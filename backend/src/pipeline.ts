@@ -64,8 +64,9 @@ export async function predict(input: {
     ctrA: rawAgg.expectedReturn,
   };
 
-  const regime = detectRegime(regimeInputs) as Regime;
+  let regime = detectRegime(regimeInputs) as Regime;
 
+  // Head weights locked to the price-based regime (do not re-weight mid-flight)
   const weights = weightHeadsByRegime(regime, artifact.heads);
   const weightedOutputs = applyHeadWeights(headOutputs, weights);
   const agg = aggregateHeads(weightedOutputs);
@@ -93,25 +94,29 @@ export async function predict(input: {
     confidence = biased.confidence;
     sentimentBias = biased.biasApplied;
 
-    // Light regime nudge toward fundamental* when sentiment is strong
+    // Label-only regime update when sentiment is strong.
+    // Heads stay on the original price regime weights (stable ensemble).
     if (
       sentiment.magnitude >= 4 &&
       Math.abs(sentiment.score) >= 0.35 &&
-      (regime === "neutral" || regime === "trend" || regime === "meanReversion")
+      (regime === "neutral" ||
+        regime === "trend" ||
+        regime === "meanReversion")
     ) {
-      // Re-detect with a sentiment-influenced ctrA proxy
-      const sentCtrA = sentiment.score * Math.min(1, sentiment.magnitude / 6);
+      const sentCtrA =
+        sentiment.score * Math.min(1, sentiment.magnitude / 6);
       const regime2 = detectRegime({
         ...regimeInputs,
         expectedReturn,
         confidence,
         ctrA: sentCtrA,
       }) as Regime;
+
       if (
         regime2 === "fundamentalBull" ||
         regime2 === "fundamentalBear"
       ) {
-        // keep the name for rationale; do not re-weight heads mid-flight
+        regime = regime2;
       }
     }
   } catch (err) {
