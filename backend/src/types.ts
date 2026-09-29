@@ -78,6 +78,11 @@ export interface Prediction {
   kellyPct: number;
   rationale: string;
 
+  // Optional sentiment (backward compatible)
+  sentimentScore?: number;
+  sentimentMagnitude?: number;
+  sentimentBias?: number;
+
   resolved: boolean;
   actualPrice?: number;
   errorPct?: number;
