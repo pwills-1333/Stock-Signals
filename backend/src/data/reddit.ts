@@ -5,7 +5,7 @@
  * Graceful: returns zeros on any failure (no key required).
  */
 
-export interface SentimentResult {
+export interface RedditSentimentResult {
   score: number; // -1 … +1
   magnitude: number; // ~0 … N (comment volume proxy)
   source: string;
@@ -20,7 +20,6 @@ interface TradestieRow {
 
 const TRADESTIE_URL = "https://tradestie.com/api/v1/apps/reddit";
 
-// Short in-memory cache of the top list (shared across tickers)
 let listCache: { rows: TradestieRow[]; expires: number } | null = null;
 const LIST_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -55,12 +54,11 @@ async function fetchTradestieList(): Promise<TradestieRow[]> {
 
 /**
  * Look up ticker in the current WSB top list.
- * score = sentiment_score (already roughly -1…+1-ish from API)
- * magnitude = comment count (capped for stability)
+ * Tickers not in the top list → zeros (by design).
  */
 export async function fetchRedditSentiment(
   ticker: string,
-): Promise<SentimentResult> {
+): Promise<RedditSentimentResult> {
   const symbol = ticker.toUpperCase().trim();
   if (!symbol) {
     return { score: 0, magnitude: 0, source: "reddit" };
@@ -83,13 +81,13 @@ export async function fetchRedditSentiment(
     else score = 0;
   }
 
-  // Clamp to [-1, 1]
   score = Math.max(-1, Math.min(1, score));
 
   const comments = Number(row.no_of_comments);
-  const magnitude = Number.isFinite(comments) && comments > 0
-    ? Math.min(comments, 500)
-    : 0;
+  const magnitude =
+    Number.isFinite(comments) && comments > 0
+      ? Math.min(comments, 500)
+      : 0;
 
   return {
     score,
