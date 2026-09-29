@@ -13,6 +13,10 @@ import { computeFractalSignal } from "./fractal.ts";
 import { atr } from "./stats.ts";
 import { computeAdaptivePsi } from "./psi/adaptivePsi.ts";
 import { computeCtrA } from "./ctmu/ctrA.ts";
+import {
+  fetchCombinedSentiment,
+  applySentimentBias,
+} from "./data/sentiment.ts";
 
 export async function predict(input: {
   ticker: string;
@@ -70,6 +74,50 @@ export async function predict(input: {
   let confidence = agg.confidence;
   let signal = agg.signal;
 
+  // --- Sentiment (Finnhub news + Reddit) — additive, low weight ---
+  let sentimentScore = 0;
+  let sentimentMagnitude = 0;
+  let sentimentBias = 0;
+
+  try {
+    const sentiment = await fetchCombinedSentiment(ticker);
+    sentimentScore = sentiment.score;
+    sentimentMagnitude = sentiment.magnitude;
+
+    const biased = applySentimentBias(
+      expectedReturn,
+      confidence,
+      sentiment,
+    );
+    expectedReturn = biased.expectedReturn;
+    confidence = biased.confidence;
+    sentimentBias = biased.biasApplied;
+
+    // Light regime nudge toward fundamental* when sentiment is strong
+    if (
+      sentiment.magnitude >= 4 &&
+      Math.abs(sentiment.score) >= 0.35 &&
+      (regime === "neutral" || regime === "trend" || regime === "meanReversion")
+    ) {
+      // Re-detect with a sentiment-influenced ctrA proxy
+      const sentCtrA = sentiment.score * Math.min(1, sentiment.magnitude / 6);
+      const regime2 = detectRegime({
+        ...regimeInputs,
+        expectedReturn,
+        confidence,
+        ctrA: sentCtrA,
+      }) as Regime;
+      if (
+        regime2 === "fundamentalBull" ||
+        regime2 === "fundamentalBear"
+      ) {
+        // keep the name for rationale; do not re-weight heads mid-flight
+      }
+    }
+  } catch (err) {
+    console.warn("Sentiment layer failed (non-fatal):", err);
+  }
+
   const psiOut = computeAdaptivePsi({
     expectedReturn,
     confidence,
@@ -100,7 +148,7 @@ export async function predict(input: {
   if (psiOut.signal === "buy" && signal === "neutral") signal = "buy";
   if (psiOut.signal === "sell" && signal === "neutral") signal = "sell";
 
-   // Final safety rail – never let expected return explode
+  // Final safety rail – never let expected return explode
   expectedReturn = Math.max(-0.15, Math.min(0.15, expectedReturn));
 
   const atrMult = Math.max(volatility, 0.008);
@@ -119,6 +167,13 @@ export async function predict(input: {
   const kellyPct = Math.max(0, Math.min(0.25, edge * 0.5));
 
   const predictedPrice = entryPrice * (1 + expectedReturn);
+
+  const sentPart =
+    sentimentMagnitude > 0
+      ? ` | Sent: ${sentimentScore.toFixed(2)} (bias ${
+        sentimentBias >= 0 ? "+" : ""
+      }${(sentimentBias * 100).toFixed(2)}%)`
+      : "";
 
   return {
     ticker,
@@ -142,8 +197,13 @@ export async function predict(input: {
     stopLoss,
     takeProfit,
     kellyPct,
+    sentimentScore,
+    sentimentMagnitude,
+    sentimentBias,
     rationale:
-      `Regime: ${regime} | Ψ: ${psiOut.psi.toFixed(3)} | CTR-A: ${ctrAOut.ctrA.toFixed(3)} | Fractal Hurst: ${fractal.hurst.toFixed(3)}`,
+      `Regime: ${regime} | Ψ: ${psiOut.psi.toFixed(3)} | CTR-A: ${
+        ctrAOut.ctrA.toFixed(3)
+      } | Fractal Hurst: ${fractal.hurst.toFixed(3)}${sentPart}`,
     resolved: false,
     horizonEndDate: new Date(
       Date.now() + horizonDays * 86_400_000,
@@ -179,6 +239,9 @@ function createEmptyPrediction(
     stopLoss: 0,
     takeProfit: 0,
     kellyPct: 0,
+    sentimentScore: 0,
+    sentimentMagnitude: 0,
+    sentimentBias: 0,
     rationale,
     resolved: false,
     horizonEndDate: new Date(
