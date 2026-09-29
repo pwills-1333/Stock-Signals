@@ -17,37 +17,48 @@ export interface SentimentResult {
   redditMagnitude: number;
 }
 
+/** Prefer multi-word / finance-specific phrases to cut false positives */
 const POSITIVE = [
   "upgrade",
-  "beats",
-  "beat",
-  "strong",
-  "surge",
-  "rally",
-  "bullish",
+  "upgraded",
+  "beats estimates",
+  "beat estimates",
+  "beats expectations",
+  "beat expectations",
+  "strong earnings",
+  "record revenue",
+  "record profit",
+  "raised guidance",
+  "raises guidance",
+  "price target raised",
   "outperform",
-  "raised",
-  "growth",
-  "record",
-  "positive",
-  "buy",
+  "overweight",
+  "bullish",
+  "surge in",
+  "rallies on",
 ];
 
 const NEGATIVE = [
   "downgrade",
-  "misses",
-  "miss",
-  "weak",
-  "fall",
-  "drop",
-  "bearish",
+  "downgraded",
+  "misses estimates",
+  "missed estimates",
+  "misses expectations",
+  "missed expectations",
+  "weak earnings",
+  "cuts guidance",
+  "cut guidance",
+  "lowered guidance",
+  "price target cut",
   "underperform",
-  "cut",
+  "underweight",
+  "bearish",
   "lawsuit",
-  "probe",
-  "negative",
-  "sell",
+  "sec probe",
+  "fraud",
   "warning",
+  "plunges on",
+  "tumbles on",
 ];
 
 function scoreText(text: string): number {
@@ -74,22 +85,26 @@ export async function scoreFinnhubNewsSentiment(
       return { score: 0, magnitude: 0 };
     }
 
-    // Cap articles to keep it light
     const slice = articles.slice(0, 25);
     let raw = 0;
+    let hits = 0;
     let n = 0;
 
     for (const a of slice) {
       const text = `${a.headline ?? ""} ${a.summary ?? ""}`;
       if (!text.trim()) continue;
-      raw += scoreText(text);
       n += 1;
+      const s = scoreText(text);
+      if (s !== 0) {
+        raw += s;
+        hits += 1;
+      }
     }
 
     if (n === 0) return { score: 0, magnitude: 0 };
 
-    // Average per article, then clamp
-    const score = clamp(raw / n / 3, -1, 1); // /3 softens keyword hits
+    // Soften by article count; require at least some signal
+    const score = hits > 0 ? clamp(raw / n / 2, -1, 1) : 0;
     return { score, magnitude: n };
   } catch (err) {
     console.warn("Finnhub news sentiment failed:", err);
@@ -109,8 +124,10 @@ export async function fetchCombinedSentiment(
     fetchRedditSentiment(ticker),
   ]);
 
-  const hasNews = news.magnitude > 0;
+  const hasNews = news.magnitude > 0 && news.score !== 0;
   const hasReddit = reddit.magnitude > 0;
+  // If news has articles but score is 0, still count magnitude for activity
+  const hasNewsActivity = news.magnitude > 0;
 
   let score = 0;
   if (hasNews && hasReddit) {
@@ -119,9 +136,10 @@ export async function fetchCombinedSentiment(
     score = news.score;
   } else if (hasReddit) {
     score = reddit.score;
+  } else if (hasNewsActivity && hasReddit) {
+    score = reddit.score * 0.4;
   }
 
-  // Magnitude: news article count + scaled Reddit comments
   const magnitude =
     news.magnitude + Math.min(reddit.magnitude / 20, 15);
 
@@ -150,11 +168,10 @@ export function applySentimentBias(
   const bias = clamp(sentiment.score * 0.015 * magFactor, -0.015, 0.015);
 
   let newReturn = expectedReturn + bias;
-  newReturn = clamp(newReturn, -0.15, 0.15); // same safety rail as pipeline
+  newReturn = clamp(newReturn, -0.15, 0.15);
 
-  // Mild confidence nudge when there is real activity
   let newConf = confidence;
-  if (sentiment.magnitude >= 3) {
+  if (sentiment.magnitude >= 3 && Math.abs(sentiment.score) > 0.05) {
     const confNudge = 1 + 0.06 * magFactor * Math.abs(sentiment.score);
     newConf = clamp(confidence * confNudge, 0, 1);
   }
