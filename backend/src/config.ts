@@ -13,3 +13,6 @@ export const MIN_RECORDS_FOR_WEIGHTS = 50;
 
 // Cache settings
 export const OHLC_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+// Optional: NewsAPI (legacy stub still present; not required for this path)
+export const NEWS_API_KEY = Deno.env.get("NEWS_API_KEY") || "";
