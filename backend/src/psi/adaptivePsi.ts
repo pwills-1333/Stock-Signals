@@ -6,7 +6,7 @@ import {
   psiVolatility,
   psiTrend,
   psiChaos,
-  psiComposite,
+  psiCompositeFromComponents,
   psiGrade,
   psiSignal,
 } from "./formulas.ts";
@@ -18,7 +18,6 @@ export interface PsiInputs {
   confidence: number;
   volatility: number;
   closes: number[];
-  /** optional preloaded weights (avoids extra IO in pipeline) */
   weights?: PsiWeights;
 }
 
@@ -46,22 +45,15 @@ export async function computeAdaptivePsi(
 
   const fractal = computeFractalSignal(closes);
 
+  // Transform once
   const r = psiReturn(expectedReturn);
   const c = psiConfidence(confidence);
   const v = psiVolatility(volatility);
   const t = psiTrend(fractal.trendBias);
   const ch = psiChaos(fractal.chaos);
 
-  const psi = psiComposite(
-    {
-      expectedReturn: r,
-      confidence: c,
-      volatility: v,
-      trendBias: t,
-      chaos: fractal.chaos,
-    },
-    weights,
-  );
+  // Weighted sum only — no second transform
+  const psi = psiCompositeFromComponents({ r, c, v, t, ch }, weights);
 
   return {
     psi,
