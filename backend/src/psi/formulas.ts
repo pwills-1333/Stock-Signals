@@ -27,6 +27,9 @@ export function psiChaos(chaos: boolean): number {
   return chaos ? 0 : 1;
 }
 
+/**
+ * From raw pipeline inputs (transforms, then weights).
+ */
 export function psiComposite(
   params: {
     expectedReturn: number;
@@ -42,13 +45,29 @@ export function psiComposite(
   const v = psiVolatility(params.volatility);
   const t = psiTrend(params.trendBias);
   const ch = psiChaos(params.chaos);
+  return psiCompositeFromComponents({ r, c, v, t, ch }, weights);
+}
 
+/**
+ * Weighted sum only — components must already be transformed to ~[-1, 1] / [0, 1].
+ * Use this when adaptivePsi has already applied psiReturn / psiVolatility / etc.
+ */
+export function psiCompositeFromComponents(
+  components: {
+    r: number;
+    c: number;
+    v: number;
+    t: number;
+    ch: number;
+  },
+  weights: PsiWeights = DEFAULT_PSI_WEIGHTS,
+): number {
   const score =
-    r * weights.r +
-    c * weights.c +
-    v * weights.v +
-    t * weights.t +
-    ch * weights.ch;
+    components.r * weights.r +
+    components.c * weights.c +
+    components.v * weights.v +
+    components.t * weights.t +
+    components.ch * weights.ch;
 
   return clamp(score, -1, 1);
 }
