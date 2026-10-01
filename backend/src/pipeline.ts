@@ -60,14 +60,31 @@ export async function predict(input: {
   const atr14 = atr(ohlc.h, ohlc.l, ohlc.c, 14);
   const volatility = entryPrice > 0 ? atr14 / entryPrice : 0;
 
+  // Continuous chaos score from fractal (0–1). No binary 0.6/0.1 jump.
+  const chaosScore =
+    typeof fractal.chaos === "number"
+      ? Math.max(0, Math.min(1, fractal.chaos))
+      : fractal.chaos
+      ? 0.6
+      : 0.1;
+
   const regimeInputs = {
     expectedReturn: rawAgg.expectedReturn,
     confidence: rawAgg.confidence,
     hurst: fractal.hurst,
     volatility,
-    chaos: fractal.chaos ? 0.6 : 0.1,
+    chaos: chaosScore,
     ctrA: rawAgg.expectedReturn,
+  const regime2 = detectRegime({
+    ...regimeInputs,
+    expectedReturn,
+    confidence,
+    ctrA: sentCtrA,
+    chaos: chaosScore,
+      }) as Regime;
   };
+
+  let regime = detectRegime(regimeInputs) as Regime;
 
   let regime = detectRegime(regimeInputs) as Regime;
 
@@ -233,9 +250,11 @@ export async function predict(input: {
     errorCorrection: ctrAOut.errorCorrection,
     learningSnapshot,
     rationale:
-      `Regime: ${regime} | Ψ: ${psiOut.psi.toFixed(3)} | CTR-A: ${
-        ctrAOut.ctrA.toFixed(3)
-      } | Fractal Hurst: ${fractal.hurst.toFixed(3)}${sentPart}${errPart}`,
+`Regime: ${regime} | Ψ: ${psiOut.psi.toFixed(3)} | CTR-A: ${
+    ctrAOut.ctrA.toFixed(3)
+    } | Fractal Hurst: ${fractal.hurst.toFixed(3)} | Chaos: ${
+    chaosScore.toFixed(2)
+    }${sentPart}${errPart}`,
     resolved: false,
     horizonEndDate: new Date(
       Date.now() + horizonDays * 86_400_000,
