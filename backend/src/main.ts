@@ -14,11 +14,16 @@ import {
 } from "./store.ts";
 import { loadLearningState } from "./learning/state.ts";
 import { fetchOHLC } from "./data.ts";
+import {
+  RESOLVE_SECRET,
+  RESOLVE_DUE_INTERVAL_MS,
+  RESOLVE_DUE_LIMIT,
+  DATA_DIR,
+} from "./config.ts";
 
 const app = new Application();
 const router = new Router();
 
-/** Allow resolve this many ms before horizonEndDate (clock skew) */
 const RESOLVE_EARLY_SLACK_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 function getClientIp(ctx: {
@@ -27,6 +32,22 @@ function getClientIp(ctx: {
   const forwarded = ctx.request.headers.get("x-forwarded-for");
   if (forwarded) return forwarded.split(",")[0].trim();
   return ctx.request.ip || "unknown";
+}
+
+/** Optional shared secret for mutate-learning endpoints */
+function checkResolveAuth(ctx: {
+  request: { headers: Headers };
+  response: { status: number; body: unknown };
+}): boolean {
+  if (!RESOLVE_SECRET) return true;
+  const got = ctx.request.headers.get("x-resolve-secret") || "";
+  if (got === RESOLVE_SECRET) return true;
+  ctx.response.status = 401;
+  ctx.response.body = {
+    error: "unauthorized",
+    message: "Missing or invalid X-Resolve-Secret header",
+  };
+  return false;
 }
 
 router.get("/health", (ctx) => {
@@ -50,6 +71,8 @@ router.get("/", (ctx) => {
       "GET /learning/state",
       "GET /accuracy",
     ],
+    resolveAuthRequired: Boolean(RESOLVE_SECRET),
+    autoResolveDueMs: RESOLVE_DUE_INTERVAL_MS || null,
   };
 });
 
@@ -112,11 +135,8 @@ router.post("/predict", async (ctx) => {
 
 /**
  * POST /resolve
- * body: {
- *   id: string,
- *   actualPrice?: number,  // optional; if omitted uses latest close
- *   force?: boolean        // required to resolve BEFORE horizonEndDate
- * }
+ * Headers: X-Resolve-Secret (if RESOLVE_SECRET set)
+ * body: { id, actualPrice?, force? }
  */
 router.post("/resolve", async (ctx) => {
   const ip = getClientIp(ctx);
@@ -126,6 +146,7 @@ router.post("/resolve", async (ctx) => {
     ctx.response.body = { error: "Too many requests" };
     return;
   }
+  if (!checkResolveAuth(ctx)) return;
 
   try {
     let body: Record<string, unknown> = {};
@@ -154,10 +175,7 @@ router.post("/resolve", async (ctx) => {
 
     if (existing.resolved) {
       ctx.response.status = 409;
-      ctx.response.body = {
-        error: "prediction already resolved",
-        id,
-      };
+      ctx.response.body = { error: "prediction already resolved", id };
       return;
     }
 
@@ -188,9 +206,7 @@ router.post("/resolve", async (ctx) => {
 
     if (!(actualPrice > 0)) {
       ctx.response.status = 422;
-      ctx.response.body = {
-        error: "Could not determine actualPrice",
-      };
+      ctx.response.body = { error: "Could not determine actualPrice" };
       return;
     }
 
@@ -214,9 +230,8 @@ router.post("/resolve", async (ctx) => {
 
 /**
  * POST /resolve-due
+ * Headers: X-Resolve-Secret (if RESOLVE_SECRET set)
  * body: { limit?: number }
- * Resolves up to `limit` (default 20, max 50) predictions past horizon.
- * Call from a cron job (e.g. daily) so learning stays fed.
  */
 router.post("/resolve-due", async (ctx) => {
   const ip = getClientIp(ctx);
@@ -226,6 +241,7 @@ router.post("/resolve-due", async (ctx) => {
     ctx.response.body = { error: "Too many requests" };
     return;
   }
+  if (!checkResolveAuth(ctx)) return;
 
   try {
     let body: Record<string, unknown> = {};
@@ -235,7 +251,7 @@ router.post("/resolve-due", async (ctx) => {
       body = {};
     }
 
-    const n = Number(body.limit) || 20;
+    const n = Number(body.limit) || RESOLVE_DUE_LIMIT;
     const result = await resolveDuePredictions({
       limit: n,
       slackMs: RESOLVE_EARLY_SLACK_MS,
@@ -337,7 +353,7 @@ app.use(
   oakCors({
     origin: "*",
     methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type"],
+    allowedHeaders: ["Content-Type", "X-Resolve-Secret"],
     optionsSuccessStatus: 200,
   }),
 );
@@ -345,9 +361,55 @@ app.use(
 app.use(router.routes());
 app.use(router.allowedMethods());
 
+/** In-process scheduler for learning feedback (optional) */
+function startResolveDueScheduler(): void {
+  if (!(RESOLVE_DUE_INTERVAL_MS > 0)) {
+    console.log(
+      "Auto resolve-due disabled (set RESOLVE_DUE_INTERVAL_MS e.g. 86400000 for daily).",
+    );
+    return;
+  }
+
+  const run = async () => {
+    try {
+      const result = await resolveDuePredictions({
+        limit: RESOLVE_DUE_LIMIT,
+        slackMs: RESOLVE_EARLY_SLACK_MS,
+      });
+      if (result.attempted > 0) {
+        console.log(
+          `resolve-due: attempted=${result.attempted} resolved=${result.resolved} failed=${result.failed.length}`,
+        );
+      }
+    } catch (err) {
+      console.warn("resolve-due scheduler error:", err);
+    }
+  };
+
+  // First run after 60s (let server warm up), then on interval
+  setTimeout(() => {
+    run();
+    setInterval(run, RESOLVE_DUE_INTERVAL_MS);
+  }, 60_000);
+
+  console.log(
+    `Auto resolve-due every ${RESOLVE_DUE_INTERVAL_MS}ms (limit ${RESOLVE_DUE_LIMIT}).`,
+  );
+}
+
+try {
+  await Deno.mkdir(DATA_DIR, { recursive: true });
+} catch {
+  // ok
+}
+
 const port = Number(Deno.env.get("PORT") ?? 8000);
 console.log(`Stock-Signals API starting on http://0.0.0.0:${port}`);
 console.log(
-  "Ensure --allow-write for DATA_DIR (default ./data). Mount a volume in production.",
+  `DATA_DIR=${DATA_DIR} — mount a persistent volume in production or learning state is lost on redeploy.`,
 );
+if (RESOLVE_SECRET) {
+  console.log("Resolve endpoints require X-Resolve-Secret header.");
+}
+startResolveDueScheduler();
 await app.listen({ port, hostname: "0.0.0.0" });
