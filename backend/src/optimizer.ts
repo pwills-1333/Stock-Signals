@@ -2,16 +2,16 @@
 import { getOutcomes } from "./store.ts";
 
 /**
- * Very simple weight adjustment based on recent hit/miss performance.
- * This is a placeholder for a real optimization routine.
- * In production you would use walk-forward validation, Bayesian optimization, etc.
+ * Placeholder weight adjustment based on recent hit/miss performance.
+ * Legacy head names — not used by the Ridge pipeline.
+ * Kept for debugging; prefers async store API.
  */
 export async function optimizeWeights(): Promise<{
   updated: boolean;
   message: string;
   weights: Record<string, number>;
 }> {
-  const outcomes = getOutcomes();
+  const outcomes = await getOutcomes();
 
   if (!Array.isArray(outcomes) || outcomes.length < 10) {
     return {
@@ -21,7 +21,6 @@ export async function optimizeWeights(): Promise<{
     };
   }
 
-  // Placeholder base weights (these names are legacy)
   const baseWeights: Record<string, number> = {
     markov: 0.15,
     arimaLstm: 0.25,
@@ -32,8 +31,6 @@ export async function optimizeWeights(): Promise<{
 
   const hits = outcomes.filter((o) => o.hit);
   const hitRate = hits.length / outcomes.length;
-
-  // Tiny adjustment based on overall hit rate
   const adjustment = (hitRate - 0.5) * 0.1;
 
   const adjusted: Record<string, number> = {};
@@ -41,7 +38,6 @@ export async function optimizeWeights(): Promise<{
     adjusted[key] = Math.max(0.05, Math.min(0.40, value + adjustment));
   }
 
-  // Normalize
   const total = Object.values(adjusted).reduce((a, b) => a + b, 0) || 1;
   for (const key of Object.keys(adjusted)) {
     adjusted[key] = adjusted[key] / total;
