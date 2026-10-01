@@ -273,6 +273,9 @@ router.post("/resolve-due", async (ctx) => {
 });
 
 router.get("/learning/state", async (ctx) => {
+  // Optional: require same secret as resolve when PROTECT_LEARNING_STATE=true
+  if (PROTECT_LEARNING_STATE && !checkResolveAuth(ctx)) return;
+
   try {
     ctx.response.body = await loadLearningState();
   } catch (err) {
