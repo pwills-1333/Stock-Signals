@@ -1,4 +1,4 @@
-import { clamp } from "../stats.ts";
+// backend/src/psi/adaptivePsi.ts
 import { computeFractalSignal } from "../fractal.ts";
 import {
   psiReturn,
@@ -8,14 +8,18 @@ import {
   psiChaos,
   psiComposite,
   psiGrade,
-  psiSignal
+  psiSignal,
 } from "./formulas.ts";
+import { getPsiWeights } from "../learning/state.ts";
+import type { PsiWeights } from "../learning/types.ts";
 
 export interface PsiInputs {
   expectedReturn: number;
   confidence: number;
   volatility: number;
   closes: number[];
+  /** optional preloaded weights (avoids extra IO in pipeline) */
+  weights?: PsiWeights;
 }
 
 export interface PsiOutput {
@@ -25,10 +29,20 @@ export interface PsiOutput {
   hurst: number;
   trendBias: number;
   chaos: boolean;
+  components: {
+    r: number;
+    c: number;
+    v: number;
+    t: number;
+    ch: number;
+  };
 }
 
-export function computeAdaptivePsi(input: PsiInputs): PsiOutput {
+export async function computeAdaptivePsi(
+  input: PsiInputs,
+): Promise<PsiOutput> {
   const { expectedReturn, confidence, volatility, closes } = input;
+  const weights = input.weights ?? (await getPsiWeights());
 
   const fractal = computeFractalSignal(closes);
 
@@ -38,44 +52,24 @@ export function computeAdaptivePsi(input: PsiInputs): PsiOutput {
   const t = psiTrend(fractal.trendBias);
   const ch = psiChaos(fractal.chaos);
 
-  const psi = psiComposite({
-    expectedReturn: r,
-    confidence: c,
-    volatility: v,
-    trendBias: t,
-    chaos: fractal.chaos
-  });
-
-  const grade = psiGrade(psi);
-  const signal = psiSignal(psi);
+  const psi = psiComposite(
+    {
+      expectedReturn: r,
+      confidence: c,
+      volatility: v,
+      trendBias: t,
+      chaos: fractal.chaos,
+    },
+    weights,
+  );
 
   return {
     psi,
-    grade,
-    signal,
+    grade: psiGrade(psi),
+    signal: psiSignal(psi),
     hurst: fractal.hurst,
     trendBias: fractal.trendBias,
-    chaos: fractal.chaos
-  };
-}
-
-export function integratePsiIntoPrediction(pred: any): any {
-  if (!pred || !Array.isArray(pred.closes)) return pred;
-
-  const psiOut = computeAdaptivePsi({
-    expectedReturn: pred.expectedReturn ?? 0,
-    confidence: pred.confidence ?? 0,
-    volatility: pred.volatility ?? 0,
-    closes: pred.closes
-  });
-
-  return {
-    ...pred,
-    psi: psiOut.psi,
-    tradeGrade: psiOut.grade,
-    signal: psiOut.signal,
-    hurst: psiOut.hurst,
-    trendBias: psiOut.trendBias,
-    chaos: psiOut.chaos
+    chaos: fractal.chaos,
+    components: { r, c, v, t, ch },
   };
 }
