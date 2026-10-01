@@ -54,30 +54,34 @@ deno task dev
 
 ## Learning loop (Ψ / CTR-A)
 
-Predictions are stored under `DATA_DIR` with a `learningSnapshot`.
+Predictions are saved under `DATA_DIR` with a `learningSnapshot`.
 
-1. `POST /predict` `{ "ticker": "AAPL", "horizonDays": 14 }` → returns `id`
-2. After the horizon (or with `force: true` for tests):
-   - `POST /resolve` `{ "id": "<id>", "actualPrice": 190.5 }`  
-   - or `POST /resolve-due` `{ "limit": 20 }` for all due predictions
-3. Outcomes update per-ticker error `e_t` and global Ψ/CTR-A weights
+1. **Predict**  
+   `POST /predict` `{ "ticker": "AAPL", "horizonDays": 14 }` → response includes `id`
 
-### Env
+2. **Resolve** (after horizon, or `force: true` for tests)  
+   - `POST /resolve` `{ "id": "<uuid>", "actualPrice": 190.5 }`  
+   - or `POST /resolve-due` `{ "limit": 20 }` for all due predictions  
+
+3. Outcomes update per-ticker error `e_t` and global Ψ / CTR-A weights.
+
+### Environment
 
 | Variable | Purpose |
 |----------|---------|
 | `FINNHUB_API_KEY` | OHLC + company news |
-| `DATA_DIR` | Predictions + learning state (default `./data`) |
+| `DATA_DIR` | Predictions + learning JSON (default `./data`) |
 | `RESOLVE_SECRET` | If set, resolve endpoints need header `X-Resolve-Secret` |
-| `RESOLVE_DUE_INTERVAL_MS` | In-process auto resolve-due interval (`0` = off) |
-| `RESOLVE_DUE_LIMIT` | Max items per auto/batch resolve |
+| `PROTECT_LEARNING_STATE` | If `true`, `GET /learning/state` also needs that header |
+| `RESOLVE_DUE_INTERVAL_MS` | In-process auto resolve-due (`0` = off; `86400000` = daily) |
+| `RESOLVE_DUE_LIMIT` | Max items per auto/batch resolve (default 20) |
 
-### Production
+### Production (Railway / Docker)
 
-- Mount a **persistent volume** on `DATA_DIR` (e.g. `/app/data`).
-- Set `RESOLVE_DUE_INTERVAL_MS=86400000` **or** external cron hitting `/resolve-due`.
-- Set `RESOLVE_SECRET` if the API is public.
+1. Mount a **persistent volume** at `/app/data` (or your `DATA_DIR`).
+2. Set `RESOLVE_DUE_INTERVAL_MS=86400000` **or** external cron → `POST /resolve-due`.
+3. Set `RESOLVE_SECRET` if the API is reachable publicly.
 
-### Note on locks
+### Locks
 
 Process-local `withLock` is **not re-entrant**. Do not call locked store/learning helpers from inside another `withLock` callback.
