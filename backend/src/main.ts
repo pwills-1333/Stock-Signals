@@ -17,6 +17,9 @@ import { fetchOHLC } from "./data.ts";
 const app = new Application();
 const router = new Router();
 
+/** Allow resolve this many ms before horizonEndDate (clock skew / same-day) */
+const RESOLVE_EARLY_SLACK_MS = 6 * 60 * 60 * 1000; // 6 hours
+
 function getClientIp(ctx: {
   request: { headers: Headers; ip: string };
 }): string {
@@ -93,7 +96,6 @@ router.post("/predict", async (ctx) => {
       return;
     }
 
-    // Persist for later resolve + learning
     const stored = await savePrediction(result);
     ctx.response.body = stored;
   } catch (err) {
@@ -108,8 +110,11 @@ router.post("/predict", async (ctx) => {
 
 /**
  * POST /resolve
- * body: { id: string, actualPrice?: number }
- * If actualPrice omitted, fetches latest close for the prediction ticker.
+ * body: {
+ *   id: string,
+ *   actualPrice?: number,
+ *   force?: boolean   // skip horizon check (explicit override)
+ * }
  */
 router.post("/resolve", async (ctx) => {
   const ip = getClientIp(ctx);
@@ -137,6 +142,7 @@ router.post("/resolve", async (ctx) => {
       return;
     }
 
+    const force = Boolean(body.force);
     const existing = await getPrediction(id);
     if (!existing) {
       ctx.response.status = 404;
@@ -144,12 +150,39 @@ router.post("/resolve", async (ctx) => {
       return;
     }
 
+    if (existing.resolved) {
+      ctx.response.status = 409;
+      ctx.response.body = {
+        error: "prediction already resolved",
+        id,
+      };
+      return;
+    }
+
+    // Horizon guard: avoid poisoning learning with same-day prices
+    const horizonMs = Date.parse(existing.horizonEndDate || "");
+    if (
+      !force &&
+      Number.isFinite(horizonMs) &&
+      Date.now() + RESOLVE_EARLY_SLACK_MS < horizonMs
+    ) {
+      ctx.response.status = 425; // Too Early
+      ctx.response.body = {
+        error: "horizon not reached",
+        message:
+          "Resolve after horizonEndDate (or pass force:true / actualPrice for testing)",
+        horizonEndDate: existing.horizonEndDate,
+        id,
+      };
+      return;
+    }
+
     let actualPrice = Number(body.actualPrice);
-    if (!(actualPrice > 0)) {
+    const hasExplicitPrice = Number.isFinite(actualPrice) && actualPrice > 0;
+
+    if (!hasExplicitPrice) {
       const ohlc = await fetchOHLC(existing.ticker);
-      actualPrice = ohlc?.c?.length
-        ? ohlc.c[ohlc.c.length - 1]
-        : 0;
+      actualPrice = ohlc?.c?.length ? ohlc.c[ohlc.c.length - 1] : 0;
     }
 
     if (!(actualPrice > 0)) {
@@ -165,6 +198,8 @@ router.post("/resolve", async (ctx) => {
       ok: true,
       record: rec,
       learning: await loadLearningState(),
+      usedExplicitPrice: hasExplicitPrice,
+      forced: force,
     };
   } catch (err) {
     console.error("Resolve error:", err);
