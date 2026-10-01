@@ -11,8 +11,23 @@ export const DATA_DIR = Deno.env.get("DATA_DIR") || "./data";
 
 export const MIN_RECORDS_FOR_WEIGHTS = 50;
 
-// Cache settings
-export const OHLC_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+export const OHLC_CACHE_TTL_MS = 5 * 60 * 1000;
 
-// Optional: NewsAPI (legacy stub still present; not required for this path)
 export const NEWS_API_KEY = Deno.env.get("NEWS_API_KEY") || "";
+
+/** If set, POST /resolve and /resolve-due require header X-Resolve-Secret */
+export const RESOLVE_SECRET = Deno.env.get("RESOLVE_SECRET") || "";
+
+/**
+ * Auto-run resolve-due on an interval (ms).
+ * 0 or unset = disabled. Example: 86400000 = daily.
+ */
+export const RESOLVE_DUE_INTERVAL_MS = Number(
+  Deno.env.get("RESOLVE_DUE_INTERVAL_MS") || 0,
+);
+
+/** Max predictions per auto /resolve-due pass */
+export const RESOLVE_DUE_LIMIT = Math.min(
+  Number(Deno.env.get("RESOLVE_DUE_LIMIT") || 20),
+  50,
+);
