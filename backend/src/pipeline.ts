@@ -75,16 +75,7 @@ export async function predict(input: {
     volatility,
     chaos: chaosScore,
     ctrA: rawAgg.expectedReturn,
-  const regime2 = detectRegime({
-    ...regimeInputs,
-    expectedReturn,
-    confidence,
-    ctrA: sentCtrA,
-    chaos: chaosScore,
-      }) as Regime;
   };
-
-  let regime = detectRegime(regimeInputs) as Regime;
 
   let regime = detectRegime(regimeInputs) as Regime;
 
@@ -114,6 +105,8 @@ export async function predict(input: {
     confidence = biased.confidence;
     sentimentBias = biased.biasApplied;
 
+    // Label-only regime update when sentiment is strong.
+    // Heads stay on the original price regime weights (stable ensemble).
     if (
       sentiment.magnitude >= 4 &&
       Math.abs(sentiment.score) >= 0.35 &&
@@ -128,6 +121,7 @@ export async function predict(input: {
         expectedReturn,
         confidence,
         ctrA: sentCtrA,
+        chaos: chaosScore,
       }) as Regime;
 
       if (
@@ -212,7 +206,6 @@ export async function predict(input: {
       }${ctrAOut.errorCorrection.toFixed(3)})`
       : "";
 
-  // Snapshot for learning (uses pre-final expectedReturn bias components)
   const learningSnapshot = {
     psiComponents: psiOut.components,
     ctrAComponents: ctrAOut.components,
@@ -250,11 +243,11 @@ export async function predict(input: {
     errorCorrection: ctrAOut.errorCorrection,
     learningSnapshot,
     rationale:
-`Regime: ${regime} | Ψ: ${psiOut.psi.toFixed(3)} | CTR-A: ${
-    ctrAOut.ctrA.toFixed(3)
-    } | Fractal Hurst: ${fractal.hurst.toFixed(3)} | Chaos: ${
-    chaosScore.toFixed(2)
-    }${sentPart}${errPart}`,
+      `Regime: ${regime} | Ψ: ${psiOut.psi.toFixed(3)} | CTR-A: ${
+        ctrAOut.ctrA.toFixed(3)
+      } | Fractal Hurst: ${fractal.hurst.toFixed(3)} | Chaos: ${
+        chaosScore.toFixed(2)
+      }${sentPart}${errPart}`,
     resolved: false,
     horizonEndDate: new Date(
       Date.now() + horizonDays * 86_400_000,
