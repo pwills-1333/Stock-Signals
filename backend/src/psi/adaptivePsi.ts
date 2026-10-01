@@ -27,7 +27,7 @@ export interface PsiOutput {
   signal: string;
   hurst: number;
   trendBias: number;
-  /** Continuous chaos score [0,1] (or legacy boolean coerced) */
+  /** Continuous chaos score [0,1] */
   chaos: number;
   components: {
     r: number;
@@ -53,14 +53,12 @@ export async function computeAdaptivePsi(
       ? 0.6
       : 0.1;
 
-  // Transform once
   const r = psiReturn(expectedReturn);
   const c = psiConfidence(confidence);
   const v = psiVolatility(volatility);
   const t = psiTrend(fractal.trendBias);
   const ch = psiChaos(chaosScore);
 
-  // Weighted sum only — no second transform
   const psi = psiCompositeFromComponents({ r, c, v, t, ch }, weights);
 
   return {
