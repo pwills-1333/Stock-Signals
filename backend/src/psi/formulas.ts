@@ -23,8 +23,18 @@ export function psiTrend(trendBias: number): number {
   return clamp(trendBias, -1, 1);
 }
 
-export function psiChaos(chaos: boolean): number {
-  return chaos ? 0 : 1;
+/**
+ * Chaos contribution for Ψ.
+ * Accepts continuous score [0,1] or legacy boolean.
+ * High chaos → low contribution (penalizes order component).
+ */
+export function psiChaos(chaos: number | boolean): number {
+  if (typeof chaos === "boolean") {
+    return chaos ? 0 : 1;
+  }
+  if (!Number.isFinite(chaos)) return 0.5;
+  // chaos 0 → 1 (ordered), chaos 1 → 0 (fully chaotic)
+  return clamp(1 - chaos, 0, 1);
 }
 
 /**
@@ -36,7 +46,7 @@ export function psiComposite(
     confidence: number;
     volatility: number;
     trendBias: number;
-    chaos: boolean;
+    chaos: number | boolean;
   },
   weights: PsiWeights = DEFAULT_PSI_WEIGHTS,
 ): number {
@@ -49,8 +59,8 @@ export function psiComposite(
 }
 
 /**
- * Weighted sum only — components must already be transformed to ~[-1, 1] / [0, 1].
- * Use this when adaptivePsi has already applied psiReturn / psiVolatility / etc.
+ * Weighted sum only — components must already be transformed.
+ * Use this when adaptivePsi has already applied psiReturn / etc.
  */
 export function psiCompositeFromComponents(
   components: {
