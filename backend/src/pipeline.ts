@@ -17,6 +17,11 @@ import {
   fetchCombinedSentiment,
   applySentimentBias,
 } from "./data/sentiment.ts";
+import {
+  getPsiWeights,
+  getCtrAWeights,
+  getTickerError,
+} from "./learning/state.ts";
 
 export async function predict(input: {
   ticker: string;
@@ -66,16 +71,14 @@ export async function predict(input: {
 
   let regime = detectRegime(regimeInputs) as Regime;
 
-  // Head weights locked to the price-based regime (do not re-weight mid-flight)
-  const weights = weightHeadsByRegime(regime, artifact.heads);
-  const weightedOutputs = applyHeadWeights(headOutputs, weights);
+  const headWeights = weightHeadsByRegime(regime, artifact.heads);
+  const weightedOutputs = applyHeadWeights(headOutputs, headWeights);
   const agg = aggregateHeads(weightedOutputs);
 
   let expectedReturn = agg.expectedReturn;
   let confidence = agg.confidence;
   let signal = agg.signal;
 
-  // --- Sentiment (Finnhub news + Reddit) — additive, low weight ---
   let sentimentScore = 0;
   let sentimentMagnitude = 0;
   let sentimentBias = 0;
@@ -94,8 +97,6 @@ export async function predict(input: {
     confidence = biased.confidence;
     sentimentBias = biased.biasApplied;
 
-    // Label-only regime update when sentiment is strong.
-    // Heads stay on the original price regime weights (stable ensemble).
     if (
       sentiment.magnitude >= 4 &&
       Math.abs(sentiment.score) >= 0.35 &&
@@ -123,18 +124,29 @@ export async function predict(input: {
     console.warn("Sentiment layer failed (non-fatal):", err);
   }
 
-  const psiOut = computeAdaptivePsi({
+  // --- Recursive learning: global weights + per-ticker e_t ---
+  const [psiWeights, ctrAWeights, tickerError] = await Promise.all([
+    getPsiWeights(),
+    getCtrAWeights(),
+    getTickerError(ticker),
+  ]);
+
+  const psiOut = await computeAdaptivePsi({
     expectedReturn,
     confidence,
     volatility,
     closes,
+    weights: psiWeights,
   });
 
-  const ctrAOut = computeCtrA({
+  const ctrAOut = await computeCtrA({
     closes,
     expectedReturn,
     confidence,
     psi: psiOut.psi,
+    ticker,
+    weights: ctrAWeights,
+    tickerError,
   });
 
   const ctrA = ctrAOut.ctrA;
@@ -153,7 +165,6 @@ export async function predict(input: {
   if (psiOut.signal === "buy" && signal === "neutral") signal = "buy";
   if (psiOut.signal === "sell" && signal === "neutral") signal = "sell";
 
-  // Final safety rail – never let expected return explode
   expectedReturn = Math.max(-0.15, Math.min(0.15, expectedReturn));
 
   const atrMult = Math.max(volatility, 0.008);
@@ -166,11 +177,8 @@ export async function predict(input: {
       ? entryPrice * (1 - 2.5 * atrMult)
       : entryPrice * (1 + 2.5 * atrMult);
 
-  // Kelly is a *position size* recommendation, not expected return.
-  // Hard-capped at 25 % of equity for risk control.
   const edge = Math.abs(expectedReturn) * confidence;
   const kellyPct = Math.max(0, Math.min(0.25, edge * 0.5));
-
   const predictedPrice = entryPrice * (1 + expectedReturn);
 
   const sentPart =
@@ -179,6 +187,22 @@ export async function predict(input: {
         sentimentBias >= 0 ? "+" : ""
       }${(sentimentBias * 100).toFixed(2)}%)`
       : "";
+
+  const errPart =
+    Math.abs(tickerError) > 1e-6
+      ? ` | e_t: ${tickerError.toFixed(4)} (corr ${
+        ctrAOut.errorCorrection >= 0 ? "+" : ""
+      }${ctrAOut.errorCorrection.toFixed(3)})`
+      : "";
+
+  // Snapshot for learning (uses pre-final expectedReturn bias components)
+  const learningSnapshot = {
+    psiComponents: psiOut.components,
+    ctrAComponents: ctrAOut.components,
+    expectedReturn,
+    entryPrice,
+    ticker,
+  };
 
   return {
     ticker,
@@ -205,10 +229,13 @@ export async function predict(input: {
     sentimentScore,
     sentimentMagnitude,
     sentimentBias,
+    tickerError,
+    errorCorrection: ctrAOut.errorCorrection,
+    learningSnapshot,
     rationale:
       `Regime: ${regime} | Ψ: ${psiOut.psi.toFixed(3)} | CTR-A: ${
         ctrAOut.ctrA.toFixed(3)
-      } | Fractal Hurst: ${fractal.hurst.toFixed(3)}${sentPart}`,
+      } | Fractal Hurst: ${fractal.hurst.toFixed(3)}${sentPart}${errPart}`,
     resolved: false,
     horizonEndDate: new Date(
       Date.now() + horizonDays * 86_400_000,
@@ -247,6 +274,8 @@ function createEmptyPrediction(
     sentimentScore: 0,
     sentimentMagnitude: 0,
     sentimentBias: 0,
+    tickerError: 0,
+    errorCorrection: 0,
     rationale,
     resolved: false,
     horizonEndDate: new Date(
