@@ -4,6 +4,15 @@ import { oakCors } from "https://deno.land/x/cors@v1.2.2/mod.ts";
 import { predict } from "./pipeline.ts";
 import { screenUniverse } from "./scanner.ts";
 import { checkRateLimit } from "./rateLimit.ts";
+import {
+  savePrediction,
+  resolvePrediction,
+  getPrediction,
+  listAccuracy,
+  resolveAllStats,
+} from "./store.ts";
+import { loadLearningState } from "./learning/state.ts";
+import { fetchOHLC } from "./data.ts";
 
 const app = new Application();
 const router = new Router();
@@ -28,7 +37,14 @@ router.get("/", (ctx) => {
   ctx.response.body = {
     status: "ok",
     service: "Stock-Signals API",
-    endpoints: ["GET /health", "POST /predict", "POST /screen"],
+    endpoints: [
+      "GET /health",
+      "POST /predict",
+      "POST /screen",
+      "POST /resolve",
+      "GET /learning/state",
+      "GET /accuracy",
+    ],
   };
 });
 
@@ -77,13 +93,109 @@ router.post("/predict", async (ctx) => {
       return;
     }
 
-    ctx.response.body = result;
+    // Persist for later resolve + learning
+    const stored = await savePrediction(result);
+    ctx.response.body = stored;
   } catch (err) {
     console.error("Prediction error:", err);
     ctx.response.status = 500;
     ctx.response.body = {
       error: "Internal server error",
       message: err instanceof Error ? err.message : String(err),
+    };
+  }
+});
+
+/**
+ * POST /resolve
+ * body: { id: string, actualPrice?: number }
+ * If actualPrice omitted, fetches latest close for the prediction ticker.
+ */
+router.post("/resolve", async (ctx) => {
+  const ip = getClientIp(ctx);
+  const limit = checkRateLimit(ip);
+  if (!limit.ok) {
+    ctx.response.status = 429;
+    ctx.response.body = { error: "Too many requests" };
+    return;
+  }
+
+  try {
+    let body: Record<string, unknown> = {};
+    try {
+      body = await ctx.request.body.json();
+    } catch {
+      ctx.response.status = 400;
+      ctx.response.body = { error: "Invalid JSON body" };
+      return;
+    }
+
+    const id = String(body.id ?? "").trim();
+    if (!id) {
+      ctx.response.status = 400;
+      ctx.response.body = { error: "id is required" };
+      return;
+    }
+
+    const existing = await getPrediction(id);
+    if (!existing) {
+      ctx.response.status = 404;
+      ctx.response.body = { error: "prediction not found" };
+      return;
+    }
+
+    let actualPrice = Number(body.actualPrice);
+    if (!(actualPrice > 0)) {
+      const ohlc = await fetchOHLC(existing.ticker);
+      actualPrice = ohlc?.c?.length
+        ? ohlc.c[ohlc.c.length - 1]
+        : 0;
+    }
+
+    if (!(actualPrice > 0)) {
+      ctx.response.status = 422;
+      ctx.response.body = {
+        error: "Could not determine actualPrice",
+      };
+      return;
+    }
+
+    const rec = await resolvePrediction(id, actualPrice);
+    ctx.response.body = {
+      ok: true,
+      record: rec,
+      learning: await loadLearningState(),
+    };
+  } catch (err) {
+    console.error("Resolve error:", err);
+    ctx.response.status = 500;
+    ctx.response.body = {
+      error: "Internal server error",
+      message: err instanceof Error ? err.message : String(err),
+    };
+  }
+});
+
+router.get("/learning/state", async (ctx) => {
+  try {
+    ctx.response.body = await loadLearningState();
+  } catch (err) {
+    ctx.response.status = 500;
+    ctx.response.body = {
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+});
+
+router.get("/accuracy", async (ctx) => {
+  try {
+    const stats = await resolveAllStats();
+    const records = await listAccuracy();
+    ctx.response.body = { stats, records: records.slice(-100) };
+  } catch (err) {
+    ctx.response.status = 500;
+    ctx.response.body = {
+      error: err instanceof Error ? err.message : String(err),
     };
   }
 });
@@ -141,7 +253,6 @@ router.post("/screen", async (ctx) => {
   }
 });
 
-// IMPORTANT: use "*" so any frontend host can call the API
 app.use(
   oakCors({
     origin: "*",
