@@ -19,6 +19,14 @@ export const NEWS_API_KEY = Deno.env.get("NEWS_API_KEY") || "";
 export const RESOLVE_SECRET = Deno.env.get("RESOLVE_SECRET") || "";
 
 /**
+ * If true, GET /learning/state also requires X-Resolve-Secret when RESOLVE_SECRET is set.
+ * Default: false (weights readable for dashboards).
+ */
+export const PROTECT_LEARNING_STATE =
+  (Deno.env.get("PROTECT_LEARNING_STATE") || "").toLowerCase() === "true" ||
+  Deno.env.get("PROTECT_LEARNING_STATE") === "1";
+
+/**
  * Auto-run resolve-due on an interval (ms).
  * 0 or unset = disabled. Example: 86400000 = daily.
  */
