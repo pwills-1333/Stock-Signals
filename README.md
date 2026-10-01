@@ -51,3 +51,33 @@ cp .env.example .env
 deno task start
 # or with auto-reload:
 deno task dev
+
+## Learning loop (Ψ / CTR-A)
+
+Predictions are stored under `DATA_DIR` with a `learningSnapshot`.
+
+1. `POST /predict` `{ "ticker": "AAPL", "horizonDays": 14 }` → returns `id`
+2. After the horizon (or with `force: true` for tests):
+   - `POST /resolve` `{ "id": "<id>", "actualPrice": 190.5 }`  
+   - or `POST /resolve-due` `{ "limit": 20 }` for all due predictions
+3. Outcomes update per-ticker error `e_t` and global Ψ/CTR-A weights
+
+### Env
+
+| Variable | Purpose |
+|----------|---------|
+| `FINNHUB_API_KEY` | OHLC + company news |
+| `DATA_DIR` | Predictions + learning state (default `./data`) |
+| `RESOLVE_SECRET` | If set, resolve endpoints need header `X-Resolve-Secret` |
+| `RESOLVE_DUE_INTERVAL_MS` | In-process auto resolve-due interval (`0` = off) |
+| `RESOLVE_DUE_LIMIT` | Max items per auto/batch resolve |
+
+### Production
+
+- Mount a **persistent volume** on `DATA_DIR` (e.g. `/app/data`).
+- Set `RESOLVE_DUE_INTERVAL_MS=86400000` **or** external cron hitting `/resolve-due`.
+- Set `RESOLVE_SECRET` if the API is public.
+
+### Note on locks
+
+Process-local `withLock` is **not re-entrant**. Do not call locked store/learning helpers from inside another `withLock` callback.
