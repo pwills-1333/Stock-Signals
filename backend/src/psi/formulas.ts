@@ -1,4 +1,7 @@
+// backend/src/psi/formulas.ts
 import { clamp } from "../stats.ts";
+import type { PsiWeights } from "../learning/types.ts";
+import { DEFAULT_PSI_WEIGHTS } from "../learning/state.ts";
 
 export function psiReturn(expectedReturn: number): number {
   if (!Number.isFinite(expectedReturn)) return 0;
@@ -24,20 +27,28 @@ export function psiChaos(chaos: boolean): number {
   return chaos ? 0 : 1;
 }
 
-export function psiComposite(params: {
-  expectedReturn: number;
-  confidence: number;
-  volatility: number;
-  trendBias: number;
-  chaos: boolean;
-}): number {
+export function psiComposite(
+  params: {
+    expectedReturn: number;
+    confidence: number;
+    volatility: number;
+    trendBias: number;
+    chaos: boolean;
+  },
+  weights: PsiWeights = DEFAULT_PSI_WEIGHTS,
+): number {
   const r = psiReturn(params.expectedReturn);
   const c = psiConfidence(params.confidence);
   const v = psiVolatility(params.volatility);
   const t = psiTrend(params.trendBias);
   const ch = psiChaos(params.chaos);
 
-  const score = r * 0.35 + c * 0.25 + v * 0.15 + t * 0.15 + ch * 0.10;
+  const score =
+    r * weights.r +
+    c * weights.c +
+    v * weights.v +
+    t * weights.t +
+    ch * weights.ch;
 
   return clamp(score, -1, 1);
 }
