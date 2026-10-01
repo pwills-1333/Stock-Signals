@@ -10,6 +10,7 @@ import {
   getPrediction,
   listAccuracy,
   resolveAllStats,
+  resolveDuePredictions,
 } from "./store.ts";
 import { loadLearningState } from "./learning/state.ts";
 import { fetchOHLC } from "./data.ts";
@@ -17,7 +18,7 @@ import { fetchOHLC } from "./data.ts";
 const app = new Application();
 const router = new Router();
 
-/** Allow resolve this many ms before horizonEndDate (clock skew / same-day) */
+/** Allow resolve this many ms before horizonEndDate (clock skew) */
 const RESOLVE_EARLY_SLACK_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 function getClientIp(ctx: {
@@ -45,6 +46,7 @@ router.get("/", (ctx) => {
       "POST /predict",
       "POST /screen",
       "POST /resolve",
+      "POST /resolve-due",
       "GET /learning/state",
       "GET /accuracy",
     ],
@@ -112,8 +114,8 @@ router.post("/predict", async (ctx) => {
  * POST /resolve
  * body: {
  *   id: string,
- *   actualPrice?: number,
- *   force?: boolean   // skip horizon check (explicit override)
+ *   actualPrice?: number,  // optional; if omitted uses latest close
+ *   force?: boolean        // required to resolve BEFORE horizonEndDate
  * }
  */
 router.post("/resolve", async (ctx) => {
@@ -159,18 +161,17 @@ router.post("/resolve", async (ctx) => {
       return;
     }
 
-    // Horizon guard: avoid poisoning learning with same-day prices
     const horizonMs = Date.parse(existing.horizonEndDate || "");
     if (
       !force &&
       Number.isFinite(horizonMs) &&
       Date.now() + RESOLVE_EARLY_SLACK_MS < horizonMs
     ) {
-      ctx.response.status = 425; // Too Early
+      ctx.response.status = 425;
       ctx.response.body = {
         error: "horizon not reached",
         message:
-          "Resolve after horizonEndDate (or pass force:true / actualPrice for testing)",
+          "Wait until horizonEndDate, or pass force:true to resolve early (testing only). actualPrice alone does not skip the horizon check.",
         horizonEndDate: existing.horizonEndDate,
         id,
       };
@@ -203,6 +204,50 @@ router.post("/resolve", async (ctx) => {
     };
   } catch (err) {
     console.error("Resolve error:", err);
+    ctx.response.status = 500;
+    ctx.response.body = {
+      error: "Internal server error",
+      message: err instanceof Error ? err.message : String(err),
+    };
+  }
+});
+
+/**
+ * POST /resolve-due
+ * body: { limit?: number }
+ * Resolves up to `limit` (default 20, max 50) predictions past horizon.
+ * Call from a cron job (e.g. daily) so learning stays fed.
+ */
+router.post("/resolve-due", async (ctx) => {
+  const ip = getClientIp(ctx);
+  const limit = checkRateLimit(ip);
+  if (!limit.ok) {
+    ctx.response.status = 429;
+    ctx.response.body = { error: "Too many requests" };
+    return;
+  }
+
+  try {
+    let body: Record<string, unknown> = {};
+    try {
+      body = await ctx.request.body.json();
+    } catch {
+      body = {};
+    }
+
+    const n = Number(body.limit) || 20;
+    const result = await resolveDuePredictions({
+      limit: n,
+      slackMs: RESOLVE_EARLY_SLACK_MS,
+    });
+
+    ctx.response.body = {
+      ok: true,
+      ...result,
+      learning: await loadLearningState(),
+    };
+  } catch (err) {
+    console.error("Resolve-due error:", err);
     ctx.response.status = 500;
     ctx.response.body = {
       error: "Internal server error",
@@ -302,4 +347,7 @@ app.use(router.allowedMethods());
 
 const port = Number(Deno.env.get("PORT") ?? 8000);
 console.log(`Stock-Signals API starting on http://0.0.0.0:${port}`);
+console.log(
+  "Ensure --allow-write for DATA_DIR (default ./data). Mount a volume in production.",
+);
 await app.listen({ port, hostname: "0.0.0.0" });
