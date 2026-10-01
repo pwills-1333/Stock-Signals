@@ -1,8 +1,16 @@
 [build]
-builder = "dockerfile"
+builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
 healthcheckPath = "/health"
 healthcheckTimeout = 30
-restartPolicyType = "on_failure"
+restartPolicyType = "ON_FAILURE"
+
+# In Railway dashboard:
+# 1) Volume mount → mount path /app/data (matches DATA_DIR in Dockerfile)
+# 2) Variables:
+#    FINNHUB_API_KEY=...
+#    DATA_DIR=/app/data
+#    RESOLVE_DUE_INTERVAL_MS=86400000
+#    RESOLVE_SECRET=...   (recommended if public)
