@@ -92,6 +92,22 @@ export async function saveLearningState(
   });
 }
 
+/** Mutate learning state under a single lock (for learnFromOutcome). */
+export async function updateLearningState(
+  fn: (state: LearningStateFile) => void | Promise<void>,
+): Promise<LearningStateFile> {
+  return withLock(async () => {
+    const state = await loadLearningStateUnlocked();
+    await fn(state);
+    state.updatedAt = new Date().toISOString();
+    cache = state;
+    loaded = true;
+    await ensureDataDir();
+    await Deno.writeTextFile(STATE_FILE, JSON.stringify(state, null, 2));
+    return state;
+  });
+}
+
 export async function getPsiWeights(): Promise<PsiWeights> {
   const s = await loadLearningState();
   return { ...s.globalPsiWeights };
