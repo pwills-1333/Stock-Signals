@@ -1,6 +1,7 @@
 // backend/src/learning/state.ts
 import { DATA_DIR } from "../config.ts";
 import { clamp } from "../stats.ts";
+import { withLock } from "./lock.ts";
 import type {
   LearningStateFile,
   PsiWeights,
@@ -47,7 +48,7 @@ async function ensureDataDir(): Promise<void> {
   }
 }
 
-export async function loadLearningState(): Promise<LearningStateFile> {
+async function loadLearningStateUnlocked(): Promise<LearningStateFile> {
   if (loaded && cache) return cache;
 
   await ensureDataDir();
@@ -75,14 +76,20 @@ export async function loadLearningState(): Promise<LearningStateFile> {
   return cache!;
 }
 
+export async function loadLearningState(): Promise<LearningStateFile> {
+  return withLock(() => loadLearningStateUnlocked());
+}
+
 export async function saveLearningState(
   state: LearningStateFile,
 ): Promise<void> {
-  await ensureDataDir();
-  state.updatedAt = new Date().toISOString();
-  cache = state;
-  loaded = true;
-  await Deno.writeTextFile(STATE_FILE, JSON.stringify(state, null, 2));
+  await withLock(async () => {
+    await ensureDataDir();
+    state.updatedAt = new Date().toISOString();
+    cache = state;
+    loaded = true;
+    await Deno.writeTextFile(STATE_FILE, JSON.stringify(state, null, 2));
+  });
 }
 
 export async function getPsiWeights(): Promise<PsiWeights> {
@@ -108,7 +115,6 @@ export async function getTickerErrorState(
   return s.tickerErrors[ticker.toUpperCase()] ?? null;
 }
 
-/** Normalize positive weights to sum ≈ 1 */
 export function normalizeWeights<T extends Record<string, number>>(
   w: T,
 ): T {
@@ -128,7 +134,6 @@ export function normalizeWeights<T extends Record<string, number>>(
   return out;
 }
 
-/** Keep each weight within [lo, hi] fraction of default, then normalize */
 export function projectPsiWeights(
   w: PsiWeights,
   lo = 0.5,
