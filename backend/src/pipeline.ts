@@ -60,7 +60,6 @@ export async function predict(input: {
   const atr14 = atr(ohlc.h, ohlc.l, ohlc.c, 14);
   const volatility = entryPrice > 0 ? atr14 / entryPrice : 0;
 
-  // Continuous chaos score from fractal (0–1). No binary 0.6/0.1 jump.
   const chaosScore =
     typeof fractal.chaos === "number"
       ? Math.max(0, Math.min(1, fractal.chaos))
@@ -105,8 +104,6 @@ export async function predict(input: {
     confidence = biased.confidence;
     sentimentBias = biased.biasApplied;
 
-    // Label-only regime update when sentiment is strong.
-    // Heads stay on the original price regime weights (stable ensemble).
     if (
       sentiment.magnitude >= 4 &&
       Math.abs(sentiment.score) >= 0.35 &&
@@ -135,7 +132,6 @@ export async function predict(input: {
     console.warn("Sentiment layer failed (non-fatal):", err);
   }
 
-  // --- Recursive learning: global weights + per-ticker e_t ---
   const [psiWeights, ctrAWeights, tickerError] = await Promise.all([
     getPsiWeights(),
     getCtrAWeights(),
