@@ -4,6 +4,7 @@ import { DATA_DIR } from "./config.ts";
 import { learnFromOutcome } from "./learning/update.ts";
 import type { LearningSnapshot } from "./learning/types.ts";
 import { withLock } from "./learning/lock.ts";
+import { fetchOHLC } from "./data.ts";
 
 const PRED_FILE = `${DATA_DIR}/predictions.json`;
 const ACC_FILE = `${DATA_DIR}/accuracy.json`;
@@ -98,11 +99,8 @@ export async function resolvePrediction(
   id: string,
   actualPrice: number,
 ): Promise<AccuracyRecord | null> {
-  // Snapshot for learning outside lock where possible; mutate under lock
   let snap: LearningSnapshot | null = null;
   let entryPrice = 0;
-  let ticker = "";
-  let expectedReturnForLearn = 0;
 
   const rec = await withLock(async () => {
     await loadStoreUnlocked();
@@ -133,8 +131,6 @@ export async function resolvePrediction(
           ticker: p.ticker,
         };
         entryPrice = p.entryPrice;
-        ticker = p.ticker;
-        expectedReturnForLearn = p.learningSnapshot.expectedReturn;
       }
     } else {
       p.errorPct = 0;
@@ -179,6 +175,60 @@ export async function resolvePrediction(
   }
 
   return rec;
+}
+
+/**
+ * Resolve all unresolved predictions whose horizon has ended.
+ * Fetches latest close per ticker. Caps work per call.
+ */
+export async function resolveDuePredictions(opts?: {
+  limit?: number;
+  slackMs?: number;
+}): Promise<{
+  attempted: number;
+  resolved: number;
+  failed: string[];
+}> {
+  const limit = Math.min(opts?.limit ?? 20, 50);
+  const slackMs = opts?.slackMs ?? 6 * 60 * 60 * 1000;
+  const now = Date.now();
+
+  const due = await withLock(async () => {
+    await loadStoreUnlocked();
+    return predictions
+      .filter((p) => {
+        if (p.resolved || !p.id) return false;
+        const h = Date.parse(p.horizonEndDate || "");
+        return Number.isFinite(h) && now + slackMs >= h;
+      })
+      .slice(0, limit)
+      .map((p) => ({ id: p.id!, ticker: p.ticker }));
+  });
+
+  let resolved = 0;
+  const failed: string[] = [];
+
+  for (const item of due) {
+    try {
+      const ohlc = await fetchOHLC(item.ticker);
+      const price = ohlc?.c?.length ? ohlc.c[ohlc.c.length - 1] : 0;
+      if (!(price > 0)) {
+        failed.push(`${item.id}:${item.ticker}:no-price`);
+        continue;
+      }
+      const rec = await resolvePrediction(item.id, price);
+      if (rec) resolved++;
+      else failed.push(`${item.id}:${item.ticker}:resolve-null`);
+    } catch (err) {
+      failed.push(
+        `${item.id}:${item.ticker}:${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
+  return { attempted: due.length, resolved, failed };
 }
 
 export async function resolveAllStats() {
