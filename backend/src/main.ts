@@ -19,12 +19,6 @@ import {
   RESOLVE_DUE_INTERVAL_MS,
   RESOLVE_DUE_LIMIT,
   DATA_DIR,
-} from "./config.ts";
-import {
-  RESOLVE_SECRET,
-  RESOLVE_DUE_INTERVAL_MS,
-  RESOLVE_DUE_LIMIT,
-  DATA_DIR,
   PROTECT_LEARNING_STATE,
 } from "./config.ts";
 
