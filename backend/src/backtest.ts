@@ -4,7 +4,6 @@
  * - Point-in-time OHLC only (no bars after as-of)
  * - Sentiment disabled (no historical news archive)
  * - Does NOT write learning state or predictions store
- * - Artifact + learning weights loaded once per run
  */
 import type { OHLC, Regime } from "./types.ts";
 import { fetchOHLC } from "./data.ts";
@@ -27,7 +26,6 @@ import {
   DEFAULT_PSI_WEIGHTS,
   DEFAULT_CTRA_WEIGHTS,
 } from "./learning/state.ts";
-import type { PsiWeights, CtrAWeights } from "./learning/types.ts";
 
 export interface BacktestTrade {
   asOfIndex: number;
@@ -40,8 +38,7 @@ export interface BacktestTrade {
   absError: number;
   signal: string;
   actualDirection: "up" | "down" | "flat";
-  /** null = neutral signal (excluded from directional accuracy) */
-  directionHit: boolean | null;
+  directionHit: boolean;
   confidence: number;
   regime: Regime | string;
   hurst: number;
@@ -55,50 +52,48 @@ export interface BacktestSummary {
   horizonDays: number;
   stepDays: number;
   trades: number;
-  /** All trades including neutral (neutral excluded from this rate) */
   directionAccuracy: number;
-  /** Buy/sell only */
-  directionalTrades: number;
   meanAbsError: number;
   meanError: number;
   hitRate5pct: number;
   bySignal: Record<string, { n: number; dirAcc: number; mae: number }>;
   byRegime: Record<string, { n: number; dirAcc: number; mae: number }>;
   sample: BacktestTrade[];
-  notes: string[];
 }
 
 export interface BacktestOpts {
   ticker: string;
-  horizonDays?: number;
-  stepDays?: number;
-  minBars?: number;
-  maxTrades?: number;
+  horizonDays?: number; // trading bars forward (default 5)
+  stepDays?: number; // stride between as-of dates (default 5)
+  minBars?: number; // min history before first predict (default 60)
+  maxTrades?: number; // cap work (default 40)
+  /** If true, freeze weights at defaults (no live e_t). Default true. */
   freezeLearning?: boolean;
 }
 
 function sliceOhlc(ohlc: OHLC, endInclusive: number): OHLC {
   const n = endInclusive + 1;
-  return {
-    t: Array.isArray(ohlc.t) ? ohlc.t.slice(0, n) : [],
+  const out: OHLC = {
     o: ohlc.o.slice(0, n),
     h: ohlc.h.slice(0, n),
     l: ohlc.l.slice(0, n),
     c: ohlc.c.slice(0, n),
-    v: Array.isArray(ohlc.v) ? ohlc.v.slice(0, n) : [],
   };
+  if ((ohlc as { v?: number[] }).v) {
+    (out as { v?: number[] }).v = (ohlc as { v: number[] }).v.slice(0, n);
+  }
+  if ((ohlc as { t?: number[] }).t) {
+    (out as { t?: number[] }).t = (ohlc as { t: number[] }).t.slice(0, n);
+  }
+  return out;
 }
 
 function barDate(ohlc: OHLC, index: number): string | null {
-  const ts = ohlc.t?.[index];
-  if (!Number.isFinite(ts)) return null;
-  // Finnhub/Yahoo: unix seconds; guard if ms
-  const ms = ts! < 1e12 ? ts! * 1000 : ts!;
-  try {
-    return new Date(ms).toISOString().slice(0, 10);
-  } catch {
-    return null;
-  }
+  const t = (ohlc as { t?: number[] }).t;
+  if (!t || !Number.isFinite(t[index])) return null;
+  // Finnhub/Yahoo often use unix seconds
+  const ms = t[index] < 1e12 ? t[index] * 1000 : t[index];
+  return new Date(ms).toISOString().slice(0, 10);
 }
 
 function direction(x: number): "up" | "down" | "flat" {
@@ -115,28 +110,14 @@ function signalDirection(signal: string): "up" | "down" | "flat" {
 }
 
 /**
- * Directional hit:
- * - buy/sell: must match actual up/down
- * - neutral: excluded (null) so they do not tank accuracy
+ * Core predict on a fixed OHLC window ending at last bar.
+ * No sentiment. Optional frozen learning weights.
  */
-function computeDirectionHit(
-  signal: string,
-  actualReturn: number,
-): boolean | null {
-  const sigDir = signalDirection(signal);
-  if (sigDir === "flat") return null;
-  return sigDir === direction(actualReturn);
-}
-
-type Artifact = Awaited<ReturnType<typeof loadAllArtifacts>>;
-
 async function predictOnWindow(input: {
   ticker: string;
   ohlc: OHLC;
-  artifact: NonNullable<Artifact>;
-  psiWeights: PsiWeights;
-  ctrAWeights: CtrAWeights;
-  tickerError: number;
+  horizonDays: number;
+  freezeLearning: boolean;
 }): Promise<{
   expectedReturn: number;
   confidence: number;
@@ -148,8 +129,8 @@ async function predictOnWindow(input: {
   ctrA: number;
   entryPrice: number;
 } | null> {
-  const { ticker, ohlc, artifact, psiWeights, ctrAWeights, tickerError } =
-    input;
+  const { ticker, ohlc, freezeLearning } = input;
+  const horizonDays = Math.max(1, input.horizonDays);
   const closes = ohlc.c;
   if (!closes || closes.length < 50) return null;
 
@@ -157,7 +138,8 @@ async function predictOnWindow(input: {
   if (!(entryPrice > 0)) return null;
 
   const features = buildFeatures(ohlc);
-  if (!artifact.heads?.length) return null;
+  const artifact = await loadAllArtifacts("artifacts");
+  if (!artifact || !artifact.heads?.length) return null;
 
   const headOutputs = runAllHeads(artifact, features);
   const rawAgg = aggregateHeads(headOutputs);
@@ -183,6 +165,7 @@ async function predictOnWindow(input: {
   };
 
   const regime = detectRegime(regimeInputs) as Regime;
+
   const headWeights = weightHeadsByRegime(regime, artifact.heads);
   const weightedOutputs = applyHeadWeights(headOutputs, headWeights);
   const agg = aggregateHeads(weightedOutputs);
@@ -190,6 +173,26 @@ async function predictOnWindow(input: {
   let expectedReturn = agg.expectedReturn;
   let confidence = agg.confidence;
   let signal = agg.signal;
+
+  // Learning: freeze to defaults for clean backtest, or read live state (read-only)
+  let psiWeights = DEFAULT_PSI_WEIGHTS;
+  let ctrAWeights = DEFAULT_CTRA_WEIGHTS;
+  let tickerError = 0;
+
+  if (!freezeLearning) {
+    try {
+      const [pw, cw, et] = await Promise.all([
+        getPsiWeights(),
+        getCtrAWeights(),
+        getTickerError(ticker),
+      ]);
+      psiWeights = pw;
+      ctrAWeights = cw;
+      tickerError = et;
+    } catch {
+      // keep defaults
+    }
+  }
 
   const psiOut = await computeAdaptivePsi({
     expectedReturn,
@@ -209,7 +212,14 @@ async function predictOnWindow(input: {
     tickerError,
   });
 
-  const ctrAReturnBias = Math.max(-0.05, Math.min(0.05, ctrAOut.ctrA * 0.03));
+  // --- Fine-tune #4: weaker CTR-A nudge, horizon-aware clamp, strict Ψ override ---
+  const maxAbsReturn =
+    horizonDays <= 5 ? 0.08 : horizonDays <= 7 ? 0.10 : 0.12;
+
+  const ctrAReturnBias = Math.max(
+    -0.02,
+    Math.min(0.02, ctrAOut.ctrA * 0.015),
+  );
   expectedReturn = expectedReturn + ctrAReturnBias;
 
   const stabilityBoost =
@@ -219,10 +229,23 @@ async function predictOnWindow(input: {
     Math.max(0, (confidence * 0.55 + psiOut.grade * 0.45) * stabilityBoost),
   );
 
-  if (psiOut.signal === "buy" && signal === "neutral") signal = "buy";
-  if (psiOut.signal === "sell" && signal === "neutral") signal = "sell";
+  const edge = Math.abs(expectedReturn) * confidence;
+  const strongEdge = confidence >= 0.55 && edge >= 0.012;
+  if (strongEdge && psiOut.signal === "buy" && signal === "neutral") {
+    signal = "buy";
+  }
+  if (strongEdge && psiOut.signal === "sell" && signal === "neutral") {
+    signal = "sell";
+  }
+  if (edge < 0.008) {
+    signal = "neutral";
+  }
 
-  expectedReturn = Math.max(-0.15, Math.min(0.15, expectedReturn));
+  expectedReturn = Math.max(
+    -maxAbsReturn,
+    Math.min(maxAbsReturn, expectedReturn),
+  );
+  // --- end fine-tune #4 ---
 
   return {
     expectedReturn,
@@ -238,19 +261,12 @@ async function predictOnWindow(input: {
 }
 
 function emptyBucket() {
-  return { n: 0, dirHits: 0, dirN: 0, absErrSum: 0 };
-}
-
-function finalizeBucket(v: ReturnType<typeof emptyBucket>) {
-  return {
-    n: v.n,
-    dirAcc: v.dirN > 0 ? v.dirHits / v.dirN : 0,
-    mae: v.n > 0 ? v.absErrSum / v.n : 0,
-  };
+  return { n: 0, dirHits: 0, absErrSum: 0 };
 }
 
 /**
- * Walk-forward: prefer **recent** history, point-in-time features only.
+ * Walk-forward: at each as-of bar i, predict using only bars [0..i],
+ * then score against close[i + horizonDays].
  */
 export async function backtestWalkForward(
   opts: BacktestOpts,
@@ -262,80 +278,38 @@ export async function backtestWalkForward(
   const maxTrades = Math.max(1, Math.min(100, opts.maxTrades ?? 40));
   const freezeLearning = opts.freezeLearning !== false;
 
-  const notes: string[] = [
-    "OHLC point-in-time only; sentiment disabled.",
-    "horizonDays/stepDays are trading bars (not calendar days).",
-    "Live Analyze uses horizonDays=14; backtest default is 5 bars.",
-    "Neutral signals excluded from direction accuracy.",
-    "Evaluates most recent eligible windows first.",
-  ];
-
-  const empty = (): BacktestSummary => ({
-    ticker,
-    horizonDays,
-    stepDays,
-    trades: 0,
-    directionAccuracy: 0,
-    directionalTrades: 0,
-    meanAbsError: 0,
-    meanError: 0,
-    hitRate5pct: 0,
-    bySignal: {},
-    byRegime: {},
-    sample: [],
-    notes,
-  });
-
   const ohlc = await fetchOHLC(ticker);
-  if (!ohlc?.c?.length) return empty();
-
-  // Load once per run (major speed fix)
-  const artifact = await loadAllArtifacts("artifacts");
-  if (!artifact || !artifact.heads?.length) {
-    notes.push("No model artifacts found.");
-    return empty();
-  }
-
-  let psiWeights = { ...DEFAULT_PSI_WEIGHTS };
-  let ctrAWeights = { ...DEFAULT_CTRA_WEIGHTS };
-  let tickerError = 0;
-
-  if (!freezeLearning) {
-    try {
-      const [pw, cw, et] = await Promise.all([
-        getPsiWeights(),
-        getCtrAWeights(),
-        getTickerError(ticker),
-      ]);
-      psiWeights = pw;
-      ctrAWeights = cw;
-      tickerError = et;
-      notes.push("Using live learning weights (read-only).");
-    } catch {
-      notes.push("Learning state read failed; using defaults.");
-    }
-  } else {
-    notes.push("Learning weights frozen at defaults.");
+  if (!ohlc?.c?.length) {
+    return {
+      ticker,
+      horizonDays,
+      stepDays,
+      trades: 0,
+      directionAccuracy: 0,
+      meanAbsError: 0,
+      meanError: 0,
+      hitRate5pct: 0,
+      bySignal: {},
+      byRegime: {},
+      sample: [],
+    };
   }
 
   const n = ohlc.c.length;
   const lastAsOf = n - 1 - horizonDays;
   const trades: BacktestTrade[] = [];
 
-  // Walk backward from most recent valid as-of so maxTrades hits recent history
   for (
-    let i = lastAsOf;
-    i >= minBars - 1 && trades.length < maxTrades;
-    i -= stepDays
+    let i = minBars - 1;
+    i <= lastAsOf && trades.length < maxTrades;
+    i += stepDays
   ) {
     const window = sliceOhlc(ohlc, i);
     const pred = await predictOnWindow({
       ticker,
       ohlc: window,
-      artifact,
-      psiWeights,
-      ctrAWeights,
-      tickerError,
+      horizonDays,
+      freezeLearning,
     });
     if (!pred) continue;
 
@@ -345,7 +319,11 @@ export async function backtestWalkForward(
     const actualReturn = futureClose / pred.entryPrice - 1;
     const error = pred.expectedReturn - actualReturn;
     const actualDir = direction(actualReturn);
-    const directionHit = computeDirectionHit(pred.signal, actualReturn);
+    const sigDir = signalDirection(pred.signal);
+    const directionHit =
+      sigDir === "flat"
+        ? actualDir === "flat"
+        : sigDir === actualDir;
 
     trades.push({
       asOfIndex: i,
@@ -368,14 +346,24 @@ export async function backtestWalkForward(
     });
   }
 
-  // Chronological order for sample display
-  trades.reverse();
-
   const m = trades.length;
-  if (m === 0) return empty();
+  if (m === 0) {
+    return {
+      ticker,
+      horizonDays,
+      stepDays,
+      trades: 0,
+      directionAccuracy: 0,
+      meanAbsError: 0,
+      meanError: 0,
+      hitRate5pct: 0,
+      bySignal: {},
+      byRegime: {},
+      sample: [],
+    };
+  }
 
   let dirHits = 0;
-  let dirN = 0;
   let absSum = 0;
   let errSum = 0;
   let hit5 = 0;
@@ -383,41 +371,39 @@ export async function backtestWalkForward(
   const regMap: Record<string, ReturnType<typeof emptyBucket>> = {};
 
   for (const t of trades) {
+    if (t.directionHit) dirHits++;
     absSum += t.absError;
     errSum += t.error;
     if (t.absError < 0.05) hit5++;
 
-    if (t.directionHit !== null) {
-      dirN++;
-      if (t.directionHit) dirHits++;
-    }
-
     const sk = t.signal || "neutral";
     if (!sigMap[sk]) sigMap[sk] = emptyBucket();
     sigMap[sk].n++;
+    if (t.directionHit) sigMap[sk].dirHits++;
     sigMap[sk].absErrSum += t.absError;
-    if (t.directionHit !== null) {
-      sigMap[sk].dirN++;
-      if (t.directionHit) sigMap[sk].dirHits++;
-    }
 
     const rk = String(t.regime || "neutral");
     if (!regMap[rk]) regMap[rk] = emptyBucket();
     regMap[rk].n++;
+    if (t.directionHit) regMap[rk].dirHits++;
     regMap[rk].absErrSum += t.absError;
-    if (t.directionHit !== null) {
-      regMap[rk].dirN++;
-      if (t.directionHit) regMap[rk].dirHits++;
-    }
   }
 
   const bySignal: BacktestSummary["bySignal"] = {};
   for (const [k, v] of Object.entries(sigMap)) {
-    bySignal[k] = finalizeBucket(v);
+    bySignal[k] = {
+      n: v.n,
+      dirAcc: v.n ? v.dirHits / v.n : 0,
+      mae: v.n ? v.absErrSum / v.n : 0,
+    };
   }
   const byRegime: BacktestSummary["byRegime"] = {};
   for (const [k, v] of Object.entries(regMap)) {
-    byRegime[k] = finalizeBucket(v);
+    byRegime[k] = {
+      n: v.n,
+      dirAcc: v.n ? v.dirHits / v.n : 0,
+      mae: v.n ? v.absErrSum / v.n : 0,
+    };
   }
 
   return {
@@ -425,14 +411,12 @@ export async function backtestWalkForward(
     horizonDays,
     stepDays,
     trades: m,
-    directionAccuracy: dirN > 0 ? dirHits / dirN : 0,
-    directionalTrades: dirN,
+    directionAccuracy: dirHits / m,
     meanAbsError: absSum / m,
     meanError: errSum / m,
     hitRate5pct: hit5 / m,
     bySignal,
     byRegime,
     sample: trades.slice(-15),
-    notes,
   };
 }
