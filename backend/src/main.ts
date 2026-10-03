@@ -14,6 +14,7 @@ import {
 } from "./store.ts";
 import { loadLearningState } from "./learning/state.ts";
 import { fetchOHLC } from "./data.ts";
+import { backtestWalkForward } from "./backtest.ts";
 import {
   RESOLVE_SECRET,
   RESOLVE_DUE_INTERVAL_MS,
@@ -66,6 +67,7 @@ router.get("/", (ctx) => {
     endpoints: [
       "GET /health",
       "POST /predict",
+      "POST /backtest",
       "POST /screen",
       "POST /resolve",
       "POST /resolve-due",
@@ -126,6 +128,83 @@ router.post("/predict", async (ctx) => {
     ctx.response.body = stored;
   } catch (err) {
     console.error("Prediction error:", err);
+    ctx.response.status = 500;
+    ctx.response.body = {
+      error: "Internal server error",
+      message: err instanceof Error ? err.message : String(err),
+    };
+  }
+});
+
+/**
+ * POST /backtest
+ * MVP historical walk-forward (OHLC only; no sentiment; no learning writes).
+ * body: {
+ *   ticker: string,
+ *   horizonDays?: number,   // trading bars ahead (default 5)
+ *   stepDays?: number,      // stride between as-of bars (default 5)
+ *   maxTrades?: number,     // cap (default 40, max 80)
+ *   freezeLearning?: boolean // default true
+ * }
+ */
+router.post("/backtest", async (ctx) => {
+  const ip = getClientIp(ctx);
+  const limit = checkRateLimit(ip);
+  if (!limit.ok) {
+    ctx.response.status = 429;
+    ctx.response.headers.set("Retry-After", String(limit.retryAfterSec ?? 60));
+    ctx.response.body = {
+      error: "Too many requests",
+      message: `Rate limit exceeded. Retry in ${limit.retryAfterSec ?? 60}s`,
+    };
+    return;
+  }
+
+  try {
+    let body: Record<string, unknown> = {};
+    try {
+      body = await ctx.request.body.json();
+    } catch {
+      ctx.response.status = 400;
+      ctx.response.body = {
+        error: "Invalid JSON body",
+        message: "Request body must be valid JSON",
+      };
+      return;
+    }
+
+    const ticker = String(body.ticker ?? "").trim();
+    if (!ticker) {
+      ctx.response.status = 400;
+      ctx.response.body = { error: "ticker is required" };
+      return;
+    }
+
+    const horizonDays = Number(body.horizonDays) || 5;
+    const stepDays = Number(body.stepDays) || 5;
+    const maxTrades = Math.min(Number(body.maxTrades) || 40, 80);
+    const freezeLearning = body.freezeLearning !== false;
+
+    const result = await backtestWalkForward({
+      ticker,
+      horizonDays,
+      stepDays,
+      maxTrades,
+      freezeLearning,
+    });
+
+    if (result.trades === 0) {
+      ctx.response.status = 422;
+      ctx.response.body = {
+        error: "No backtest trades (need longer OHLC history)",
+        ...result,
+      };
+      return;
+    }
+
+    ctx.response.body = result;
+  } catch (err) {
+    console.error("Backtest error:", err);
     ctx.response.status = 500;
     ctx.response.body = {
       error: "Internal server error",
@@ -274,7 +353,6 @@ router.post("/resolve-due", async (ctx) => {
 });
 
 router.get("/learning/state", async (ctx) => {
-  // Optional: require same secret as resolve when PROTECT_LEARNING_STATE=true
   if (PROTECT_LEARNING_STATE && !checkResolveAuth(ctx)) return;
 
   try {
@@ -390,7 +468,6 @@ function startResolveDueScheduler(): void {
     }
   };
 
-  // First run after 60s (let server warm up), then on interval
   setTimeout(() => {
     run();
     setInterval(run, RESOLVE_DUE_INTERVAL_MS);
