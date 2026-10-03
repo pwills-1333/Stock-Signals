@@ -18,7 +18,7 @@ export interface HeadWeight {
 
 /**
  * Rank regimes instead of first-match hard gates.
- * Chaos only wins when it is clearly dominant.
+ * Tuned so TSLA-like high ATR does not always win "volatility".
  */
 export function detectRegime(inputs: RegimeInputs): Regime {
   const { expectedReturn, hurst, volatility, chaos, ctrA } = inputs;
@@ -30,48 +30,61 @@ export function detectRegime(inputs: RegimeInputs): Regime {
     meanReversion: 0,
     fundamentalBull: 0,
     fundamentalBear: 0,
-    neutral: 0.15, // small baseline so quiet markets stay neutral
+    neutral: 0.22, // higher baseline → more neutral in quiet/ambiguous markets
   };
 
-  // Chaos: needs high continuous score (was: any > 0.45 → always chaos)
-  if (chaos >= 0.55) {
-    scores.chaos = 0.4 + (chaos - 0.55) * 1.2;
+  // Chaos: only when clearly dominant
+  if (chaos >= 0.60) {
+    scores.chaos = 0.35 + (chaos - 0.60) * 1.1;
   }
-  if (chaos >= 0.75) {
-    scores.chaos += 0.35; // strong boost only for extreme chaos
+  if (chaos >= 0.80) {
+    scores.chaos += 0.30;
   }
 
-  // Volatility regime (ATR/price)
-  if (volatility > 0.035) {
-    scores.volatility = 0.35 + Math.min(0.5, (volatility - 0.035) * 12);
+  // Volatility: raised floor (was 0.035) so moderate TSLA vol does not dominate
+  if (volatility > 0.055) {
+    scores.volatility = 0.28 + Math.min(0.45, (volatility - 0.055) * 8);
+  } else if (volatility > 0.040) {
+    // mild vol contributes less
+    scores.volatility = 0.12 + (volatility - 0.040) * 4;
   }
 
   // Trend: persistent Hurst + directional return
-  if (hurst > 0.55 && expectedReturn > 0.003) {
+  if (hurst > 0.55 && Math.abs(expectedReturn) > 0.004) {
+    const dirBoost =
+      expectedReturn > 0
+        ? Math.min(0.25, expectedReturn * 8)
+        : Math.min(0.25, -expectedReturn * 6);
     scores.trend =
-      0.3 +
+      0.28 +
       Math.min(0.45, (hurst - 0.55) * 3) +
-      Math.min(0.25, expectedReturn * 8);
+      dirBoost;
   }
 
-  // Mean reversion: low Hurst + meaningful move
-  if (hurst < 0.45 && Math.abs(expectedReturn) > 0.003) {
+  // Mean reversion: low Hurst OR high vol + weak trend (TSLA-friendly)
+  if (hurst < 0.48 && Math.abs(expectedReturn) > 0.003) {
     scores.meanReversion =
-      0.3 +
-      Math.min(0.45, (0.45 - hurst) * 3) +
+      0.32 +
+      Math.min(0.45, (0.48 - hurst) * 3) +
       Math.min(0.25, Math.abs(expectedReturn) * 8);
   }
-
-  // Sentiment / structure tilt (ctrA used as proxy at detect time)
-  if (ctrA > 0.15) {
-    scores.fundamentalBull = 0.25 + Math.min(0.5, (ctrA - 0.15) * 2);
+  // Extra mean-rev path when vol is elevated but not extreme chaos
+  if (volatility > 0.045 && hurst < 0.52 && chaos < 0.65) {
+    scores.meanReversion = Math.max(
+      scores.meanReversion,
+      0.30 + Math.min(0.35, (volatility - 0.045) * 6),
+    );
   }
-  if (ctrA < -0.15) {
-    scores.fundamentalBear = 0.25 + Math.min(0.5, (-ctrA - 0.15) * 2);
+
+  // Sentiment / structure tilt
+  if (ctrA > 0.18) {
+    scores.fundamentalBull = 0.22 + Math.min(0.45, (ctrA - 0.18) * 1.8);
+  }
+  if (ctrA < -0.18) {
+    scores.fundamentalBear = 0.22 + Math.min(0.45, (-ctrA - 0.18) * 1.8);
   }
 
-  // If chaos is only moderate, suppress it so structure can win
-  if (chaos < 0.55) {
+  if (chaos < 0.60) {
     scores.chaos = 0;
   }
 
@@ -82,6 +95,11 @@ export function detectRegime(inputs: RegimeInputs): Regime {
       bestScore = score;
       best = name;
     }
+  }
+
+  // Require clear winner over neutral
+  if (best !== "neutral" && bestScore < scores.neutral + 0.08) {
+    return "neutral";
   }
 
   return best;
@@ -108,9 +126,9 @@ export function weightHeadsByRegime(
         break;
 
       case "meanReversion":
-        if (name.includes("meanrev")) w = 1.50;
-        else if (name.includes("trend")) w = 0.50;
-        else if (name.includes("chaos")) w = 0.70;
+        if (name.includes("meanrev")) w = 1.55;
+        else if (name.includes("trend")) w = 0.45;
+        else if (name.includes("chaos") || name.includes("vol")) w = 1.05;
         break;
 
       case "chaos":
@@ -120,9 +138,12 @@ export function weightHeadsByRegime(
         break;
 
       case "volatility":
-        if (name.includes("vol") || name.includes("volatility")) w = 1.45;
+        // Prefer mean-rev / vol heads; de-emphasize pure trend (TSLA buy bias)
+        if (name.includes("meanrev")) w = 1.40;
+        else if (name.includes("vol") || name.includes("volatility")) w = 1.35;
         else if (name.includes("chaos")) w = 1.15;
-        else w = 0.80;
+        else if (name.includes("trend")) w = 0.55;
+        else w = 0.85;
         break;
 
       case "fundamentalBull":
@@ -137,7 +158,10 @@ export function weightHeadsByRegime(
 
       case "neutral":
       default:
-        w = 1.0;
+        // Slight mean-rev lean in neutral (avoid always-long ensemble)
+        if (name.includes("meanrev")) w = 1.10;
+        else if (name.includes("trend")) w = 0.90;
+        else w = 1.0;
         break;
     }
 
