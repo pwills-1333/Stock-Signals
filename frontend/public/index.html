@@ -427,7 +427,7 @@
         const res = await fetch(API_BASE + "/predict", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ticker: ticker, horizonDays: 14 }),
+          body: JSON.stringify({ ticker: ticker, horizonDays: 7 }),
         });
 
         let data = {};
