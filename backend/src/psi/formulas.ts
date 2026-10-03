@@ -79,9 +79,10 @@ export function psiGrade(psi: number): number {
   return clamp((psi + 1) / 2, 0, 1);
 }
 
+/** Raised thresholds — was ±0.25; reduces weak buy spam */
 export function psiSignal(psi: number): string {
   if (!Number.isFinite(psi)) return "neutral";
-  if (psi > 0.25) return "buy";
-  if (psi < -0.25) return "sell";
+  if (psi > 0.40) return "buy";
+  if (psi < -0.40) return "sell";
   return "neutral";
 }
