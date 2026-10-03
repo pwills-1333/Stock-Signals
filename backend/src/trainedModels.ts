@@ -2,14 +2,14 @@
 import type { ModelArtifact, ModelHead } from "./types.ts";
 
 /**
- * Soft map from raw ridge score → ~14-day expected return.
- * tanh prevents extreme garbage scores from becoming ±25 % prints.
+ * Soft map from raw ridge score → expected return.
+ * Tuned down after TSLA walk-forward: MAE ~13–15% with old 0.12 scale.
  */
 function scoreToExpectedReturn(score: number): number {
   if (!Number.isFinite(score)) return 0;
-  // Typical head scores after price-norm stay in a moderate range.
-  // 0.12 * tanh(...) keeps the bulk of mass inside ±8–10 %.
-  return 0.12 * Math.tanh(score / 0.06);
+  // Was 0.12 * tanh(score / 0.06) → bulk ±8–10%.
+  // Smaller scale reduces oversized wrong bets.
+  return 0.08 * Math.tanh(score / 0.07);
 }
 
 export function runRidgeHead(head: ModelHead, features: number[]): number {
@@ -59,12 +59,13 @@ export function aggregateHeads(
 
   const expectedReturn = scoreToExpectedReturn(avgScore);
 
-  // Confidence from magnitude of the raw score (not from |return|)
-  const confidence = Math.min(1, Math.abs(avgScore) / 0.06);
+  // Confidence from magnitude of the raw score
+  const confidence = Math.min(1, Math.abs(avgScore) / 0.08);
 
+  // Raised from ±0.012 → fewer weak buys (TSLA was ~80% buy)
   let signal: "buy" | "sell" | "neutral" = "neutral";
-  if (expectedReturn > 0.012) signal = "buy";
-  if (expectedReturn < -0.012) signal = "sell";
+  if (expectedReturn > 0.022) signal = "buy";
+  if (expectedReturn < -0.022) signal = "sell";
 
   return { expectedReturn, confidence, signal };
 }
