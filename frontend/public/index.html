@@ -13,6 +13,7 @@
       --green: #4ade80;
       --red: #f87171;
       --blue: #3b82f6;
+      --border: #374151;
     }
     * { box-sizing: border-box; }
     body {
@@ -24,7 +25,8 @@
       line-height: 1.5;
     }
     .container { max-width: 720px; margin: 0 auto; padding: 24px 16px; }
-    h1 { font-size: 1.75rem; margin-bottom: 1.5rem; font-weight: 700; }
+    h1 { font-size: 1.75rem; margin-bottom: 0.5rem; font-weight: 700; }
+    .subtitle { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.5rem; }
     .card {
       background: var(--card);
       border-radius: 12px;
@@ -32,14 +34,22 @@
       margin-bottom: 20px;
     }
     label { display: block; margin-bottom: 6px; font-size: 0.9rem; color: var(--muted); }
-    input {
+    input, select {
       width: 100%;
       padding: 10px 12px;
       border-radius: 8px;
-      border: 1px solid #374151;
+      border: 1px solid var(--border);
       background: #111827;
       color: white;
       font-size: 1rem;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 520px) {
+      .row { grid-template-columns: 1fr; }
     }
     button {
       margin-top: 12px;
@@ -54,6 +64,10 @@
     }
     button:hover { opacity: 0.9; }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.secondary {
+      background: #4b5563;
+      margin-left: 8px;
+    }
     .status { margin-top: 10px; font-size: 0.875rem; color: var(--muted); }
     .hidden { display: none; }
     .positive { color: var(--green); }
@@ -77,106 +91,270 @@
     }
     .metric-label { font-size: 0.8rem; color: var(--muted); }
     .metric-value { font-size: 1.25rem; font-weight: 600; }
-    hr { border: none; border-top: 1px solid #374151; margin: 20px 0; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
     .rationale { font-size: 0.9rem; color: var(--muted); white-space: pre-wrap; }
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .tab {
+      margin-top: 0;
+      background: #111827;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-weight: 600;
+      padding: 8px 16px;
+    }
+    .tab.active {
+      background: var(--blue);
+      color: #fff;
+      border-color: var(--blue);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+      margin-top: 12px;
+    }
+    th, td {
+      text-align: left;
+      padding: 8px 6px;
+      border-bottom: 1px solid var(--border);
+    }
+    th { color: var(--muted); font-weight: 600; }
+    .hint { font-size: 0.8rem; color: var(--muted); margin-top: 8px; }
+    .chip {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      background: #111827;
+      margin: 2px 4px 2px 0;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>Stock Signals</h1>
+    <p class="subtitle">Live prediction · Historical walk-forward backtest (OHLC only)</p>
 
-    <div class="card">
-      <label for="tickerInput">Ticker Symbol</label>
-      <input id="tickerInput" placeholder="AAPL, TSLA, NVDA, MSFT..." autocomplete="off" />
-      <button type="button" id="analyzeBtn">Analyze</button>
-      <div id="status" class="status">● Ready — enter a ticker and click Analyze</div>
+    <div class="tabs">
+      <button type="button" class="tab active" id="tabLive">Live</button>
+      <button type="button" class="tab" id="tabBacktest">Backtest</button>
     </div>
 
-    <div id="loading" class="card hidden">Loading prediction...</div>
+    <!-- ========== LIVE ========== -->
+    <div id="panelLive">
+      <div class="card">
+        <label for="tickerInput">Ticker Symbol</label>
+        <input id="tickerInput" placeholder="AAPL, TSLA, NVDA, MSFT..." autocomplete="off" />
+        <button type="button" id="analyzeBtn">Analyze</button>
+        <div id="status" class="status">● Ready — enter a ticker and click Analyze</div>
+      </div>
 
-    <div id="errorCard" class="card hidden" style="border: 1px solid var(--red);">
-      <strong>Error</strong>
-      <div id="errorMessage" style="margin-top: 8px;"></div>
+      <div id="loading" class="card hidden">Loading prediction...</div>
+
+      <div id="errorCard" class="card hidden" style="border: 1px solid var(--red);">
+        <strong>Error</strong>
+        <div id="errorMessage" style="margin-top: 8px;"></div>
+      </div>
+
+      <div id="predictionCard" class="card hidden">
+        <h2 id="tickerName" style="margin-top: 0;"></h2>
+
+        <div class="grid">
+          <div>
+            <div class="metric-label">Current Price</div>
+            <div id="currentPrice" class="metric-value"></div>
+          </div>
+          <div>
+            <div class="metric-label">Predicted Price</div>
+            <div id="predictedPrice" class="metric-value"></div>
+          </div>
+        </div>
+
+        <div style="margin-top: 16px;">
+          <div class="metric-label">Expected Return</div>
+          <div id="expectedReturn" class="metric-value"></div>
+        </div>
+
+        <div class="grid" style="margin-top: 16px;">
+          <div>
+            <div class="metric-label">Confidence</div>
+            <div id="confidence" class="metric-value"></div>
+          </div>
+          <div>
+            <div class="metric-label">Trade Grade</div>
+            <div id="tradeGrade" class="metric-value"></div>
+          </div>
+        </div>
+
+        <div style="margin-top: 16px;">
+          <span id="signalBadge" class="badge"></span>
+        </div>
+
+        <hr />
+        <h3 style="margin: 0 0 8px 0; font-size: 1rem;">Risk Levels</h3>
+        <div>Stop Loss: <strong id="stopLoss"></strong></div>
+        <div>Take Profit: <strong id="takeProfit"></strong></div>
+        <div>Kelly %: <strong id="kellyPct"></strong></div>
+
+        <hr />
+        <h3 style="margin: 0 0 8px 0; font-size: 1rem;">Model diagnostics</h3>
+        <div class="grid">
+          <div>
+            <div class="metric-label">Regime</div>
+            <div id="regime" class="metric-value"></div>
+          </div>
+          <div>
+            <div class="metric-label">Ψ (psi)</div>
+            <div id="psi" class="metric-value"></div>
+          </div>
+          <div>
+            <div class="metric-label">CTR-A</div>
+            <div id="ctmu" class="metric-value"></div>
+          </div>
+          <div>
+            <div class="metric-label">Hurst</div>
+            <div id="hurst" class="metric-value"></div>
+          </div>
+          <div>
+            <div class="metric-label">Vol (ATR/price)</div>
+            <div id="garchVol" class="metric-value"></div>
+          </div>
+          <div>
+            <div class="metric-label">Signal quality</div>
+            <div id="signalQuality" class="metric-value"></div>
+          </div>
+        </div>
+
+        <hr />
+        <h3 style="margin: 0 0 8px 0; font-size: 1rem;">Rationale</h3>
+        <div id="rationale" class="rationale"></div>
+      </div>
     </div>
 
-    <div id="predictionCard" class="card hidden">
-      <h2 id="tickerName" style="margin-top: 0;"></h2>
+    <!-- ========== BACKTEST ========== -->
+    <div id="panelBacktest" class="hidden">
+      <div class="card">
+        <label for="btTicker">Ticker Symbol</label>
+        <input id="btTicker" placeholder="AAPL, MSFT..." autocomplete="off" />
 
-      <div class="grid">
-        <div>
-          <div class="metric-label">Current Price</div>
-          <div id="currentPrice" class="metric-value"></div>
+        <div class="row" style="margin-top: 12px;">
+          <div>
+            <label for="btHorizon">Horizon (trading bars)</label>
+            <select id="btHorizon">
+              <option value="4">4 bars (~1 week)</option>
+              <option value="5" selected>5 bars</option>
+              <option value="7">7 bars</option>
+              <option value="10">10 bars</option>
+              <option value="14">14 bars</option>
+            </select>
+          </div>
+          <div>
+            <label for="btStep">Step (bars between tests)</label>
+            <select id="btStep">
+              <option value="3">3</option>
+              <option value="5" selected>5</option>
+              <option value="10">10</option>
+            </select>
+          </div>
         </div>
-        <div>
-          <div class="metric-label">Predicted Price</div>
-          <div id="predictedPrice" class="metric-value"></div>
+
+        <div class="row" style="margin-top: 12px;">
+          <div>
+            <label for="btMax">Max trades</label>
+            <select id="btMax">
+              <option value="20">20</option>
+              <option value="30" selected>30</option>
+              <option value="40">40</option>
+              <option value="60">60</option>
+            </select>
+          </div>
+          <div>
+            <label for="btFreeze">Learning weights</label>
+            <select id="btFreeze">
+              <option value="true" selected>Frozen defaults (clean)</option>
+              <option value="false">Use live learning state</option>
+            </select>
+          </div>
         </div>
+
+        <button type="button" id="backtestBtn">Run backtest</button>
+        <div id="btStatus" class="status">● Ready — historical walk-forward on OHLC only</div>
+        <p class="hint">
+          MVP: no live sentiment. Each point uses only past bars, then scores vs the real close
+          N bars later. Direction accuracy and error are summary stats, not guarantees.
+        </p>
       </div>
 
-      <div style="margin-top: 16px;">
-        <div class="metric-label">Expected Return</div>
-        <div id="expectedReturn" class="metric-value"></div>
+      <div id="btLoading" class="card hidden">Running walk-forward (may take 30–90s)...</div>
+
+      <div id="btErrorCard" class="card hidden" style="border: 1px solid var(--red);">
+        <strong>Backtest error</strong>
+        <div id="btErrorMessage" style="margin-top: 8px;"></div>
       </div>
 
-      <div class="grid" style="margin-top: 16px;">
-        <div>
-          <div class="metric-label">Confidence</div>
-          <div id="confidence" class="metric-value"></div>
+      <div id="btResultCard" class="card hidden">
+        <h2 id="btTitle" style="margin-top: 0;"></h2>
+
+        <div class="grid">
+          <div>
+            <div class="metric-label">Trades</div>
+            <div id="btTrades" class="metric-value"></div>
+          </div>
+          <div>
+            <div class="metric-label">Direction accuracy</div>
+            <div id="btDirAcc" class="metric-value"></div>
+          </div>
+          <div>
+            <div class="metric-label">Mean abs error</div>
+            <div id="btMae" class="metric-value"></div>
+          </div>
+          <div>
+            <div class="metric-label">Hit rate (|err| &lt; 5%)</div>
+            <div id="btHit5" class="metric-value"></div>
+          </div>
         </div>
-        <div>
-          <div class="metric-label">Trade Grade</div>
-          <div id="tradeGrade" class="metric-value"></div>
+
+        <hr />
+        <h3 style="margin: 0 0 8px 0; font-size: 1rem;">By signal</h3>
+        <div id="btBySignal"></div>
+
+        <hr />
+        <h3 style="margin: 0 0 8px 0; font-size: 1rem;">By regime</h3>
+        <div id="btByRegime"></div>
+
+        <hr />
+        <h3 style="margin: 0 0 8px 0; font-size: 1rem;">Sample trades (recent)</h3>
+        <div style="overflow-x: auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>As of</th>
+                <th>Signal</th>
+                <th>Pred %</th>
+                <th>Actual %</th>
+                <th>Hit</th>
+                <th>Regime</th>
+              </tr>
+            </thead>
+            <tbody id="btSampleBody"></tbody>
+          </table>
         </div>
       </div>
-
-      <div style="margin-top: 16px;">
-        <span id="signalBadge" class="badge"></span>
-      </div>
-
-      <hr />
-      <h3 style="margin: 0 0 8px 0; font-size: 1rem;">Risk Levels</h3>
-      <div>Stop Loss: <strong id="stopLoss"></strong></div>
-      <div>Take Profit: <strong id="takeProfit"></strong></div>
-      <div>Kelly %: <strong id="kellyPct"></strong></div>
-
-      <hr />
-      <h3 style="margin: 0 0 8px 0; font-size: 1rem;">Model diagnostics</h3>
-      <div class="grid">
-        <div>
-          <div class="metric-label">Regime</div>
-          <div id="regime" class="metric-value"></div>
-        </div>
-        <div>
-          <div class="metric-label">Ψ (psi)</div>
-          <div id="psi" class="metric-value"></div>
-        </div>
-        <div>
-          <div class="metric-label">CTR-A</div>
-          <div id="ctmu" class="metric-value"></div>
-        </div>
-        <div>
-          <div class="metric-label">Hurst</div>
-          <div id="hurst" class="metric-value"></div>
-        </div>
-        <div>
-          <div class="metric-label">Vol (ATR/price)</div>
-          <div id="garchVol" class="metric-value"></div>
-        </div>
-        <div>
-          <div class="metric-label">Signal quality</div>
-          <div id="signalQuality" class="metric-value"></div>
-        </div>
-      </div>
-
-      <hr />
-      <h3 style="margin: 0 0 8px 0; font-size: 1rem;">Rationale</h3>
-      <div id="rationale" class="rationale"></div>
     </div>
   </div>
 
   <script>
-    // Must match your live Railway API URL
+    // Must match your live Railway API URL (no trailing slash)
     const API_BASE = "https://stock-signals-production-3e18.up.railway.app";
+
+    function pct(x, digits) {
+      if (typeof x !== "number" || isNaN(x)) return "—";
+      return (x * 100).toFixed(digits != null ? digits : 1) + "%";
+    }
 
     function showError(msg) {
       const card = document.getElementById("errorCard");
@@ -188,6 +366,36 @@
     function setStatus(text) {
       const s = document.getElementById("status");
       if (s) s.textContent = text;
+    }
+
+    function setBtStatus(text) {
+      const s = document.getElementById("btStatus");
+      if (s) s.textContent = text;
+    }
+
+    function showBtError(msg) {
+      const card = document.getElementById("btErrorCard");
+      const el = document.getElementById("btErrorMessage");
+      if (card) card.classList.remove("hidden");
+      if (el) el.textContent = String(msg || "Unknown error");
+    }
+
+    function switchTab(which) {
+      const live = document.getElementById("panelLive");
+      const bt = document.getElementById("panelBacktest");
+      const tLive = document.getElementById("tabLive");
+      const tBt = document.getElementById("tabBacktest");
+      if (which === "backtest") {
+        live.classList.add("hidden");
+        bt.classList.remove("hidden");
+        tLive.classList.remove("active");
+        tBt.classList.add("active");
+      } else {
+        bt.classList.add("hidden");
+        live.classList.remove("hidden");
+        tBt.classList.remove("active");
+        tLive.classList.add("active");
+      }
     }
 
     async function loadTicker() {
@@ -300,10 +508,179 @@
         p.rationale || "Analysis complete.";
     }
 
-    // Wire button after DOM is ready (more reliable than inline onclick)
+    async function runBacktest() {
+      const ticker = (document.getElementById("btTicker").value || "").trim().toUpperCase();
+      if (!ticker) {
+        showBtError("Please enter a ticker symbol");
+        setBtStatus("● Error");
+        return;
+      }
+
+      const horizonDays = Number(document.getElementById("btHorizon").value) || 5;
+      const stepDays = Number(document.getElementById("btStep").value) || 5;
+      const maxTrades = Number(document.getElementById("btMax").value) || 30;
+      const freezeLearning = document.getElementById("btFreeze").value !== "false";
+
+      const btn = document.getElementById("backtestBtn");
+      const loading = document.getElementById("btLoading");
+      const result = document.getElementById("btResultCard");
+      const errCard = document.getElementById("btErrorCard");
+
+      if (btn) btn.disabled = true;
+      if (loading) loading.classList.remove("hidden");
+      if (result) result.classList.add("hidden");
+      if (errCard) errCard.classList.add("hidden");
+      setBtStatus("● Running walk-forward...");
+
+      try {
+        const res = await fetch(API_BASE + "/backtest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ticker: ticker,
+            horizonDays: horizonDays,
+            stepDays: stepDays,
+            maxTrades: maxTrades,
+            freezeLearning: freezeLearning,
+          }),
+        });
+
+        let data = {};
+        const text = await res.text();
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch (e) {
+          throw new Error("API returned non-JSON: " + text.slice(0, 160));
+        }
+
+        if (!res.ok) {
+          throw new Error(
+            data.error || data.message || ("HTTP " + res.status)
+          );
+        }
+
+        if (!data.trades) {
+          throw new Error(data.error || "No backtest trades returned");
+        }
+
+        renderBacktest(data);
+        setBtStatus("● Done — " + data.trades + " trades");
+      } catch (err) {
+        console.error(err);
+        showBtError(err && err.message ? err.message : "Backtest failed");
+        setBtStatus("● Error");
+      } finally {
+        if (loading) loading.classList.add("hidden");
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    function renderBucket(containerId, map) {
+      const el = document.getElementById(containerId);
+      if (!el) return;
+      const keys = Object.keys(map || {});
+      if (!keys.length) {
+        el.innerHTML = '<span class="hint">No data</span>';
+        return;
+      }
+      el.innerHTML = keys
+        .map(function (k) {
+          const b = map[k];
+          return (
+            '<span class="chip"><strong>' +
+            k +
+            "</strong>: n=" +
+            b.n +
+            " · dir " +
+            pct(b.dirAcc) +
+            " · mae " +
+            pct(b.mae, 2) +
+            "</span>"
+          );
+        })
+        .join("");
+    }
+
+    function renderBacktest(d) {
+      document.getElementById("btResultCard").classList.remove("hidden");
+      document.getElementById("btTitle").textContent =
+        (d.ticker || "—") +
+        " · H=" +
+        d.horizonDays +
+        " · step=" +
+        d.stepDays;
+
+      document.getElementById("btTrades").textContent = String(d.trades);
+      document.getElementById("btDirAcc").textContent = pct(d.directionAccuracy);
+      document.getElementById("btMae").textContent = pct(d.meanAbsError, 2);
+      document.getElementById("btHit5").textContent = pct(d.hitRate5pct);
+
+      renderBucket("btBySignal", d.bySignal);
+      renderBucket("btByRegime", d.byRegime);
+
+      const tbody = document.getElementById("btSampleBody");
+      const sample = d.sample || [];
+      if (!sample.length) {
+        tbody.innerHTML = '<tr><td colspan="6">No sample trades</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = sample
+        .slice()
+        .reverse()
+        .map(function (t) {
+          const pred =
+            (t.predictedReturn >= 0 ? "+" : "") +
+            (t.predictedReturn * 100).toFixed(2);
+          const act =
+            (t.actualReturn >= 0 ? "+" : "") +
+            (t.actualReturn * 100).toFixed(2);
+          const hit = t.directionHit ? "✓" : "✗";
+          const hitClass = t.directionHit ? "positive" : "negative";
+          return (
+            "<tr>" +
+            "<td>" +
+            (t.asOfDate || "#" + t.asOfIndex) +
+            "</td>" +
+            "<td>" +
+            (t.signal || "—") +
+            "</td>" +
+            '<td class="' +
+            (t.predictedReturn >= 0 ? "positive" : "negative") +
+            '">' +
+            pred +
+            "%</td>" +
+            '<td class="' +
+            (t.actualReturn >= 0 ? "positive" : "negative") +
+            '">' +
+            act +
+            "%</td>" +
+            '<td class="' +
+            hitClass +
+            '">' +
+            hit +
+            "</td>" +
+            "<td>" +
+            (t.regime || "—") +
+            "</td>" +
+            "</tr>"
+          );
+        })
+        .join("");
+    }
+
     document.addEventListener("DOMContentLoaded", function () {
       const btn = document.getElementById("analyzeBtn");
       const input = document.getElementById("tickerInput");
+      const btBtn = document.getElementById("backtestBtn");
+      const btInput = document.getElementById("btTicker");
+
+      document.getElementById("tabLive").addEventListener("click", function () {
+        switchTab("live");
+      });
+      document.getElementById("tabBacktest").addEventListener("click", function () {
+        switchTab("backtest");
+      });
 
       if (btn) {
         btn.addEventListener("click", function (e) {
@@ -311,12 +688,25 @@
           loadTicker();
         });
       }
-
       if (input) {
         input.addEventListener("keydown", function (e) {
           if (e.key === "Enter") {
             e.preventDefault();
             loadTicker();
+          }
+        });
+      }
+      if (btBtn) {
+        btBtn.addEventListener("click", function (e) {
+          e.preventDefault();
+          runBacktest();
+        });
+      }
+      if (btInput) {
+        btInput.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            runBacktest();
           }
         });
       }
