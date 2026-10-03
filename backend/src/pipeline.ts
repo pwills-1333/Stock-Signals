@@ -28,7 +28,8 @@ export async function predict(input: {
   horizonDays?: number;
 }): Promise<Prediction> {
   const ticker = (input.ticker || "").toUpperCase().trim();
-  const horizonDays = input.horizonDays ?? 14;
+  // Fine-tune #5: default closer to best TSLA backtest (was 14)
+  const horizonDays = input.horizonDays ?? 7;
 
   const ohlc: OHLC | null = await fetchOHLC(ticker);
   if (!ohlc || ohlc.c.length < 50) {
@@ -159,7 +160,15 @@ export async function predict(input: {
   const ctrA = ctrAOut.ctrA;
   const psiGrade = psiOut.grade;
 
-  const ctrAReturnBias = Math.max(-0.05, Math.min(0.05, ctrA * 0.03));
+  // --- Fine-tune #4: weaker CTR-A nudge, horizon-aware clamp, strict Ψ override ---
+  const horizonDaysSafe = Math.max(1, horizonDays);
+  const maxAbsReturn =
+    horizonDaysSafe <= 5 ? 0.08 : horizonDaysSafe <= 7 ? 0.10 : 0.12;
+
+  const ctrAReturnBias = Math.max(
+    -0.02,
+    Math.min(0.02, ctrA * 0.015),
+  );
   expectedReturn = expectedReturn + ctrAReturnBias;
 
   const stabilityBoost =
@@ -169,10 +178,23 @@ export async function predict(input: {
     Math.max(0, (confidence * 0.55 + psiGrade * 0.45) * stabilityBoost),
   );
 
-  if (psiOut.signal === "buy" && signal === "neutral") signal = "buy";
-  if (psiOut.signal === "sell" && signal === "neutral") signal = "sell";
+  const edge = Math.abs(expectedReturn) * confidence;
+  const strongEdge = confidence >= 0.55 && edge >= 0.012;
+  if (strongEdge && psiOut.signal === "buy" && signal === "neutral") {
+    signal = "buy";
+  }
+  if (strongEdge && psiOut.signal === "sell" && signal === "neutral") {
+    signal = "sell";
+  }
+  if (edge < 0.008) {
+    signal = "neutral";
+  }
 
-  expectedReturn = Math.max(-0.15, Math.min(0.15, expectedReturn));
+  expectedReturn = Math.max(
+    -maxAbsReturn,
+    Math.min(maxAbsReturn, expectedReturn),
+  );
+  // --- end fine-tune #4 ---
 
   const atrMult = Math.max(volatility, 0.008);
   const stopLoss =
@@ -184,8 +206,8 @@ export async function predict(input: {
       ? entryPrice * (1 - 2.5 * atrMult)
       : entryPrice * (1 + 2.5 * atrMult);
 
-  const edge = Math.abs(expectedReturn) * confidence;
-  const kellyPct = Math.max(0, Math.min(0.25, edge * 0.5));
+  const kellyEdge = Math.abs(expectedReturn) * confidence;
+  const kellyPct = Math.max(0, Math.min(0.25, kellyEdge * 0.5));
   const predictedPrice = entryPrice * (1 + expectedReturn);
 
   const sentPart =
