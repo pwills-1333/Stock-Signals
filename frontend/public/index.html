@@ -287,6 +287,10 @@
           MVP: no live sentiment. Each point uses only past bars, then scores vs the real close
           N bars later. Direction accuracy and error are summary stats, not guarantees.
         </p>
+        <p class="hint">
+          Live Analyze uses a 14-day horizon; this tab defaults to 5 trading bars
+          (~1 week). Direction accuracy counts buy/sell only (neutral excluded).
+        </p>
       </div>
 
       <div id="btLoading" class="card hidden">Running walk-forward (may take 30–90s)...</div>
@@ -635,8 +639,18 @@
           const act =
             (t.actualReturn >= 0 ? "+" : "") +
             (t.actualReturn * 100).toFixed(2);
-          const hit = t.directionHit ? "✓" : "✗";
-          const hitClass = t.directionHit ? "positive" : "negative";
+          const hit =
+            t.directionHit === null
+              ? "—"
+              : t.directionHit
+              ? "✓"
+              : "✗";
+          const hitClass =
+            t.directionHit === null
+              ? ""
+              : t.directionHit
+              ? "positive"
+              : "negative";
           return (
             "<tr>" +
             "<td>" +
